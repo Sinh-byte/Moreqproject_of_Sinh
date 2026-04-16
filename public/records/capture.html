@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capture Wizard — MoReq2010</title>
+  <style>
+    :root {
+      --navy: #0f172a;
+      --navy-light: #1e293b;
+      --emerald: #10b981;
+      --emerald-dim: #059669;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --danger: #f87171;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(160deg, var(--navy) 0%, #0c1222 50%, var(--navy-light) 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 2rem; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.5rem; letter-spacing: 0.02em; }
+    .sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1rem; }
+
+    .banner {
+      display: none;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+    }
+    .banner.show { display: block; }
+    .banner.err { background: rgba(248, 113, 113, 0.12); color: #fecaca; }
+    .banner.ok { background: rgba(16, 185, 129, 0.12); color: #a7f3d0; }
+
+    .stepper {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      gap: 0.35rem;
+      padding: 0.75rem 0;
+      margin-bottom: 1rem;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .step {
+      flex: 1;
+      text-align: center;
+      padding: 0.5rem 0.35rem;
+      border-radius: 8px;
+      font-size: 0.72rem;
+      line-height: 1.25;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      background: var(--navy-light);
+    }
+    @media (min-width: 640px) { .step { font-size: 0.8rem; padding: 0.6rem; } }
+    .step.active {
+      border-color: var(--emerald);
+      color: #ecfdf5;
+      box-shadow: 0 0 0 1px var(--emerald);
+      background: rgba(16, 185, 129, 0.15);
+    }
+    .step.done { color: #a7f3d0; }
+    .step .num { font-weight: 700; color: var(--emerald); }
+    .step.done .num::after { content: ' ✓'; }
+
+    .layout { display: grid; gap: 1rem; }
+    @media (min-width: 900px) {
+      .layout-2 { grid-template-columns: 1fr 280px; align-items: start; }
+    }
+
+    .panel {
+      display: none;
+      background: var(--navy-light);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+    }
+    .panel.visible { display: block; }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--emerald);
+      background: rgba(16, 185, 129, 0.06);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: var(--emerald); color: #042f2e; }
+    .btn-primary:hover:not(:disabled) { background: var(--emerald-dim); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--emerald); color: #a7f3d0; }
+
+    .file-list { margin-top: 1rem; }
+    .file-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .file-row:last-child { border-bottom: none; }
+    .hash { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--muted); }
+
+    .tree { font-size: 0.88rem; max-height: 420px; overflow: auto; padding-right: 0.25rem; }
+    .tree ul { list-style: none; margin: 0; padding-left: 1rem; }
+    .tree li { margin: 0.2rem 0; }
+    .tree-toggle {
+      display: inline-flex;
+      width: 1.25rem;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--emerald);
+      user-select: none;
+    }
+    .tree-node {
+      cursor: pointer;
+      padding: 0.2rem 0.35rem;
+      border-radius: 6px;
+    }
+    .tree-node:hover { background: rgba(16, 185, 129, 0.1); }
+    .tree-node.selected {
+      background: rgba(16, 185, 129, 0.22);
+      outline: 1px solid var(--emerald);
+    }
+
+    .side-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem;
+      font-size: 0.82rem;
+    }
+    .side-card h3 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--emerald); }
+    .side-card dl { margin: 0; }
+    .side-card dt { color: var(--muted); margin-top: 0.45rem; }
+    .side-card dd { margin: 0.15rem 0 0; }
+
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.2rem; }
+    input[type="text"], input[type="date"], select, textarea {
+      width: 100%;
+      padding: 0.45rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--navy);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    .field { margin-bottom: 0.75rem; }
+    .field.invalid input, .field.invalid select, .field.invalid textarea {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
+    }
+    .req::after { content: ' *'; color: var(--danger); }
+
+    .tags-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .tag-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tag-pill.on { border-color: var(--emerald); background: rgba(16, 185, 129, 0.15); }
+
+    .summary { font-size: 0.88rem; line-height: 1.5; }
+    .summary section { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+    .summary section:last-child { border-bottom: none; }
+    .freeze-note {
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid var(--emerald);
+      color: #d1fae5;
+      font-size: 0.88rem;
+      margin: 1rem 0;
+    }
+
+    .modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-bg.show { display: flex; }
+    .modal {
+      background: var(--navy-light);
+      border: 1px solid var(--emerald);
+      border-radius: 12px;
+      padding: 1.25rem;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    .modal h2 { margin: 0 0 0.5rem; color: var(--emerald); font-size: 1.1rem; }
+    .nav-row { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+    .nav-row.left { justify-content: space-between; }
+    a.link { color: var(--emerald); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Capture Wizard</h1>
+    <p class="sub">Nhập văn bản mới — MoReq2010 (4 bước)</p>
+
+    <div id="api-banner" class="banner err" role="alert"></div>
+
+    <div class="stepper" id="stepper" aria-label="Tiến trình">
+      <div class="step active" data-i="1"><span class="num">1</span><br />Tải file</div>
+      <div class="step" data-i="2"><span class="num">2</span><br />Phân loại</div>
+      <div class="step" data-i="3"><span class="num">3</span><br />Metadata</div>
+      <div class="step" data-i="4"><span class="num">4</span><br />Phong bế</div>
+    </div>
+
+    <!-- Bước 1 -->
+    <div class="panel visible" data-step="1">
+      <p style="color:var(--muted);font-size:0.88rem;margin-top:0;">PDF, DOC/DOCX, XLS/XLSX, PNG, JPG — tối đa 50MB/file</p>
+      <div class="dropzone" id="dropzone" tabindex="0">
+        Kéo thả file vào đây hoặc
+        <br /><br />
+        <button type="button" class="btn btn-primary" id="pick-files">Chọn file</button>
+        <input type="file" id="file-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" hidden />
+      </div>
+      <div class="file-list" id="file-list"></div>
+      <div class="nav-row">
+        <span></span>
+        <button type="button" class="btn btn-primary" id="to-step-2" disabled>Tiếp theo</button>
+      </div>
+    </div>
+
+    <!-- Bước 2 -->
+    <div class="panel" data-step="2">
+      <div class="layout layout-2">
+        <div>
+          <p style="margin-top:0;color:var(--muted);font-size:0.85rem;">Chọn một nút trên cây phân loại</p>
+          <div class="tree" id="class-tree"></div>
+          <div class="field" style="margin-top:1rem;">
+            <label>Override lịch lưu giữ (Disposal schedule)</label>
+            <select id="ds-override"></select>
+          </div>
+          <div class="field">
+            <label>Aggregation (tùy chọn)</label>
+            <select id="agg-select">
+              <option value="">— Không chọn —</option>
+            </select>
+          </div>
+        </div>
+        <aside>
+          <div class="side-card" id="side-class">
+            <h3>Phân loại đã chọn</h3>
+            <dl>
+              <dt>Đường dẫn</dt>
+              <dd id="side-path">—</dd>
+              <dt>DS từ phân loại</dt>
+              <dd id="side-ds-class">—</dd>
+              <dt>DS đang áp dụng</dt>
+              <dd id="side-ds-eff">—</dd>
+              <dt>Thời hạn lưu</dt>
+              <dd id="side-ret">—</dd>
+              <dt>Số record</dt>
+              <dd id="side-rcount">—</dd>
+            </dl>
+          </div>
+        </aside>
+      </div>
+      <div class="nav-row left">
+        <button type="button" class="btn btn-ghost" data-back="1">Quay lại</button>
+        <button type="button" class="btn btn-primary" id="to-step-3" disabled>Tiếp theo</button>
+      </div>
+    </div>
+
+    <!-- Bước 3 -->
+    <div class="panel" data-step="3">
+      <div class="layout layout-2">
+        <div>
+          <div class="field" id="f-docRef">
+            <label>Số hiệu văn bản</label>
+            <input type="text" id="meta-docRef" autocomplete="off" />
+          </div>
+          <div class="field" id="f-docType">
+            <label class="req">Loại văn bản</label>
+            <select id="meta-docType">
+              <option value="regulation">Quy chế / Quy định</option>
+              <option value="decision">Quyết định</option>
+              <option value="contract">Hợp đồng</option>
+              <option value="minutes">Biên bản</option>
+              <option value="memo">Công văn / Memo</option>
+              <option value="plan">Kế hoạch</option>
+              <option value="dispatch">Công điện</option>
+              <option value="other">Khác</option>
+            </select>
+          </div>
+          <div class="field invalid-target" id="f-title">
+            <label class="req">Tiêu đề</label>
+            <input type="text" id="meta-title" autocomplete="off" />
+          </div>
+          <div class="field invalid-target" id="f-issueDate">
+            <label class="req">Ngày ban hành</label>
+            <input type="date" id="meta-issueDate" />
+          </div>
+          <div class="field" id="f-effectiveDate">
+            <label>Ngày hiệu lực</label>
+            <input type="date" id="meta-effectiveDate" />
+          </div>
+          <div class="field" id="f-expiryDate">
+            <label>Ngày hết hiệu lực</label>
+            <input type="date" id="meta-expiryDate" />
+          </div>
+          <div class="field" id="f-trigger">
+            <label>Sự kiện tính retention</label>
+            <select id="meta-trigger">
+              <option value="issue_date">Ngày ban hành</option>
+              <option value="expiry_date">Ngày hết hiệu lực</option>
+              <option value="custom">Tùy chỉnh (ngày trigger)</option>
+            </select>
+          </div>
+          <div class="field" id="f-triggerOverride" style="display:none;">
+            <label class="req">Ngày trigger</label>
+            <input type="date" id="meta-triggerOverride" />
+          </div>
+          <div class="field invalid-target" id="f-author">
+            <label class="req">Người soạn</label>
+            <input type="text" id="meta-author" autocomplete="off" />
+          </div>
+          <div class="field" id="f-approver">
+            <label>Người phê duyệt</label>
+            <input type="text" id="meta-approver" autocomplete="off" />
+          </div>
+          <div class="field invalid-target" id="f-issuing">
+            <label class="req">Đơn vị ban hành</label>
+            <input type="text" id="meta-issuing" autocomplete="off" />
+          </div>
+          <div class="field" id="f-desc">
+            <label>Mô tả</label>
+            <textarea id="meta-desc"></textarea>
+          </div>
+          <div class="field" id="f-kw">
+            <label>Từ khóa (phân tách bằng dấu phẩy)</label>
+            <input type="text" id="meta-kw" autocomplete="off" />
+          </div>
+          <div class="field" id="f-tags">
+            <label>Thẻ (tags)</label>
+            <div class="tags-grid" id="tags-grid"></div>
+          </div>
+        </div>
+        <aside>
+          <div class="side-card">
+            <h3>Tóm tắt bước 2</h3>
+            <dl>
+              <dt>Phân loại</dt>
+              <dd id="meta-side-path">—</dd>
+              <dt>Lịch lưu giữ</dt>
+              <dd id="meta-side-ds">—</dd>
+            </dl>
+          </div>
+        </aside>
+      </div>
+      <div class="nav-row left">
+        <button type="button" class="btn btn-ghost" data-back="2">Quay lại</button>
+        <button type="button" class="btn btn-primary" id="to-step-4">Tiếp theo</button>
+      </div>
+    </div>
+
+    <!-- Bước 4 -->
+    <div class="panel" data-step="4">
+      <div class="freeze-note">
+        Sau khi phong bế, nội dung file và các trường lõi của record không thể thay đổi. Vui lòng kiểm tra kỹ trước khi xác nhận.
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="nav-row left">
+        <button type="button" class="btn btn-ghost" data-back="3">Quay lại</button>
+        <button type="button" class="btn btn-primary" id="btn-finalize">Phong bế Record</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="success-modal" aria-hidden="true">
+    <div class="modal">
+      <h2>Đã phong bế thành công</h2>
+      <p>Số hiệu record:</p>
+      <p id="modal-rec-num" style="font-size:1.25rem;font-weight:700;color:var(--emerald);"></p>
+      <p><a class="link" id="modal-link" href="#">Xem Record</a></p>
+      <button type="button" class="btn btn-primary" id="modal-close" style="width:100%;margin-top:0.5rem;">Đóng</button>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  const API = '/api/records/capture';
+
+  const wizardState = {
+    step: 1,
+    uploadedFiles: [],
+    classificationId: null,
+    selectedNode: null,
+    disposalScheduleId: null,
+    aggregationId: null,
+    tagIds: [],
+    _classifications: null,
+    _schedules: null,
+    _aggregations: null,
+    _tags: null,
+    _treeOpen: {},
+  };
+
+  function authHeaders(isJson) {
+    const t = localStorage.getItem('token');
+    const h = {};
+    if (isJson) h['Content-Type'] = 'application/json';
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return h;
+  }
+
+  const banner = document.getElementById('api-banner');
+  function showError(msg) {
+    banner.textContent = msg || 'Đã xảy ra lỗi';
+    banner.className = 'banner err show';
+  }
+  function showOk(msg) {
+    banner.textContent = msg || '';
+    banner.className = 'banner ok show';
+    setTimeout(function () { banner.classList.remove('show'); }, 4000);
+  }
+  function clearBanner() {
+    banner.className = 'banner err';
+    banner.textContent = '';
+  }
+
+  async function parseJsonOrText(res) {
+    const t = await res.text();
+    try { return { json: JSON.parse(t), raw: t }; } catch { return { json: null, raw: t }; }
+  }
+
+  function setStep(n) {
+    wizardState.step = n;
+    document.querySelectorAll('.panel').forEach(function (p) {
+      p.classList.toggle('visible', parseInt(p.getAttribute('data-step'), 10) === n);
+    });
+    document.querySelectorAll('.stepper .step').forEach(function (s) {
+      const i = parseInt(s.getAttribute('data-i'), 10);
+      s.classList.toggle('active', i === n);
+      s.classList.toggle('done', i < n);
+    });
+    clearBanner();
+    if (n === 4) renderSummary();
+    if (n === 3) syncMetaSidebar();
+  }
+
+  function buildPath(flat, nodeId) {
+    const byId = {};
+    flat.forEach(function (r) { byId[r.id] = r; });
+    const parts = [];
+    let cur = byId[nodeId];
+    while (cur) {
+      parts.unshift(cur.name + ' (' + cur.code + ')');
+      cur = cur.parent_id ? byId[cur.parent_id] : null;
+    }
+    return parts.join(' → ');
+  }
+
+  function scheduleById(id) {
+    if (!wizardState._schedules || !id) return null;
+    return wizardState._schedules.find(function (s) { return s.id === id; }) || null;
+  }
+
+  function retentionLabel(s) {
+    if (!s) return '—';
+    if (s.is_permanent === 1) return 'Vĩnh viễn';
+    if (s.retention_years != null) return s.retention_years + ' năm';
+    return '—';
+  }
+
+  function updateSideClassPanel() {
+    const node = wizardState.selectedNode;
+    const pathEl = document.getElementById('side-path');
+    const dsClassEl = document.getElementById('side-ds-class');
+    const dsEffEl = document.getElementById('side-ds-eff');
+    const retEl = document.getElementById('side-ret');
+    const rcEl = document.getElementById('side-rcount');
+    if (!node) {
+      pathEl.textContent = '—';
+      dsClassEl.textContent = '—';
+      dsEffEl.textContent = '—';
+      retEl.textContent = '—';
+      rcEl.textContent = '—';
+      return;
+    }
+    const flat = wizardState._classifications || [];
+    pathEl.textContent = buildPath(flat, node.id);
+    const dsC = scheduleById(node.disposal_schedule_id);
+    dsClassEl.textContent = dsC ? dsC.code + ' — ' + dsC.name : '—';
+    const eff = scheduleById(wizardState.disposalScheduleId);
+    dsEffEl.textContent = eff ? eff.code + ' — ' + eff.name : '—';
+    retEl.textContent = retentionLabel(eff);
+    rcEl.textContent = String(node.record_count != null ? node.record_count : '0');
+  }
+
+  function fillDsDropdown() {
+    const sel = document.getElementById('ds-override');
+    sel.innerHTML = '';
+    (wizardState._schedules || []).forEach(function (s) {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.code + ' — ' + s.name;
+      sel.appendChild(o);
+    });
+    if (wizardState.disposalScheduleId) sel.value = wizardState.disposalScheduleId;
+  }
+
+  function fillAggDropdown() {
+    const sel = document.getElementById('agg-select');
+    while (sel.options.length > 1) sel.remove(1);
+    (wizardState._aggregations || []).forEach(function (a) {
+      const o = document.createElement('option');
+      o.value = a.id;
+      o.textContent = a.code + ' — ' + a.title;
+      sel.appendChild(o);
+    });
+    sel.value = wizardState.aggregationId || '';
+  }
+
+  async function ensureStep2Data() {
+    if (wizardState._classifications) return;
+    clearBanner();
+    try {
+      const [cRes, dRes, aRes, tRes] = await Promise.all([
+        fetch(API + '/classifications', { headers: authHeaders(false) }),
+        fetch(API + '/disposal-schedules', { headers: authHeaders(false) }),
+        fetch(API + '/aggregations', { headers: authHeaders(false) }),
+        fetch(API + '/tags', { headers: authHeaders(false) }),
+      ]);
+      const cP = await parseJsonOrText(cRes);
+      const dP = await parseJsonOrText(dRes);
+      const aP = await parseJsonOrText(aRes);
+      const tP = await parseJsonOrText(tRes);
+      if (!cRes.ok) throw new Error((cP.json && cP.json.error) || cP.raw || 'Lỗi classifications');
+      if (!dRes.ok) throw new Error((dP.json && dP.json.error) || dP.raw || 'Lỗi disposal-schedules');
+      if (!aRes.ok) throw new Error((aP.json && aP.json.error) || aP.raw || 'Lỗi aggregations');
+      if (!tRes.ok) throw new Error((tP.json && tP.json.error) || tP.raw || 'Lỗi tags');
+      wizardState._classifications = cP.json;
+      wizardState._schedules = dP.json;
+      wizardState._aggregations = aP.json;
+      wizardState._tags = tP.json;
+      fillDsDropdown();
+      fillAggDropdown();
+      renderTagGrid();
+      renderClassTree();
+    } catch (e) {
+      showError(e.message || String(e));
+    }
+  }
+
+  function renderTagGrid() {
+    const grid = document.getElementById('tags-grid');
+    grid.innerHTML = '';
+    (wizardState._tags || []).forEach(function (t) {
+      const el = document.createElement('label');
+      el.className = 'tag-pill';
+      el.dataset.id = t.id;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.style.display = 'none';
+      cb.checked = wizardState.tagIds.indexOf(t.id) >= 0;
+      if (cb.checked) el.classList.add('on');
+      el.appendChild(cb);
+      el.appendChild(document.createTextNode(t.name));
+      el.addEventListener('click', function () {
+        cb.checked = !cb.checked;
+        el.classList.toggle('on', cb.checked);
+        if (cb.checked) {
+          if (wizardState.tagIds.indexOf(t.id) < 0) wizardState.tagIds.push(t.id);
+        } else {
+          wizardState.tagIds = wizardState.tagIds.filter(function (x) { return x !== t.id; });
+        }
+      });
+      grid.appendChild(el);
+    });
+  }
+
+  function renderClassTree() {
+    const root = document.getElementById('class-tree');
+    root.innerHTML = '';
+    const flat = wizardState._classifications || [];
+    const byParent = {};
+    flat.forEach(function (r) {
+      const pid = r.parent_id || '__root__';
+      if (!byParent[pid]) byParent[pid] = [];
+      byParent[pid].push(r);
+    });
+    Object.keys(byParent).forEach(function (k) {
+      byParent[k].sort(function (a, b) {
+        const so = (a.sort_order || 0) - (b.sort_order || 0);
+        if (so !== 0) return so;
+        return a.code.localeCompare(b.code);
+      });
+    });
+
+    function renderUl(parentId, container) {
+      const list = byParent[parentId] || [];
+      if (!list.length) return;
+      const ul = document.createElement('ul');
+      list.forEach(function (node) {
+        const li = document.createElement('li');
+        const kids = (byParent[node.id] || []).length > 0;
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'flex-start';
+        row.style.gap = '0.15rem';
+        if (kids) {
+          const open = wizardState._treeOpen[node.id] !== false;
+          const tg = document.createElement('span');
+          tg.className = 'tree-toggle';
+          tg.textContent = open ? '▾' : '▸';
+          tg.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            wizardState._treeOpen[node.id] = !open;
+            renderClassTree();
+          });
+          row.appendChild(tg);
+        } else {
+          const sp = document.createElement('span');
+          sp.style.width = '1.25rem';
+          sp.style.display = 'inline-block';
+          row.appendChild(sp);
+        }
+        const label = document.createElement('div');
+        label.className = 'tree-node' + (wizardState.classificationId === node.id ? ' selected' : '');
+        label.textContent = node.code + ' — ' + node.name;
+        label.addEventListener('click', function () {
+          wizardState.classificationId = node.id;
+          wizardState.selectedNode = node;
+          const defDs = node.disposal_schedule_id || (wizardState._schedules[0] && wizardState._schedules[0].id);
+          wizardState.disposalScheduleId = defDs || null;
+          document.getElementById('ds-override').value = wizardState.disposalScheduleId || '';
+          document.getElementById('to-step-3').disabled = false;
+          renderClassTree();
+          updateSideClassPanel();
+        });
+        row.appendChild(label);
+        li.appendChild(row);
+        if (kids && wizardState._treeOpen[node.id] !== false) {
+          renderUl(node.id, li);
+        }
+        ul.appendChild(li);
+      });
+      container.appendChild(ul);
+    }
+
+    renderUl('__root__', root);
+    updateSideClassPanel();
+  }
+
+  document.getElementById('ds-override').addEventListener('change', function () {
+    wizardState.disposalScheduleId = this.value || null;
+    updateSideClassPanel();
+    syncMetaSidebar();
+  });
+  document.getElementById('agg-select').addEventListener('change', function () {
+    wizardState.aggregationId = this.value || null;
+  });
+
+  function syncMetaSidebar() {
+    document.getElementById('meta-side-path').textContent =
+      wizardState.selectedNode ? buildPath(wizardState._classifications || [], wizardState.classificationId) : '—';
+    const eff = scheduleById(wizardState.disposalScheduleId);
+    document.getElementById('meta-side-ds').textContent = eff ? eff.code + ' — ' + eff.name : '—';
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('file-list');
+    list.innerHTML = '';
+    wizardState.uploadedFiles.forEach(function (f, idx) {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      const info = document.createElement('div');
+      info.innerHTML =
+        '<strong>' + escapeHtml(f.originalName) + '</strong><br>' +
+        '<span class="hash">' + (f.size != null ? formatBytes(f.size) : '') + ' · ' +
+        (f.sha256 ? f.sha256.slice(0, 8) + '…' : '') + '</span>';
+      const prim = document.createElement('label');
+      prim.style.fontSize = '0.8rem';
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'primary-file';
+      r.checked = !!f.isPrimary;
+      r.addEventListener('change', function () {
+        wizardState.uploadedFiles.forEach(function (x, j) { x.isPrimary = j === idx; });
+        renderFileList();
+      });
+      prim.appendChild(r);
+      prim.appendChild(document.createTextNode(' Chính'));
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'btn btn-ghost';
+      rm.style.padding = '0.25rem 0.5rem';
+      rm.textContent = 'Xóa';
+      rm.addEventListener('click', function () {
+        wizardState.uploadedFiles.splice(idx, 1);
+        if (wizardState.uploadedFiles.length && !wizardState.uploadedFiles.some(function (x) { return x.isPrimary; })) {
+          wizardState.uploadedFiles[0].isPrimary = true;
+        }
+        renderFileList();
+        document.getElementById('to-step-2').disabled = wizardState.uploadedFiles.length === 0;
+      });
+      row.appendChild(info);
+      row.appendChild(prim);
+      row.appendChild(rm);
+      list.appendChild(row);
+    });
+    document.getElementById('to-step-2').disabled = wizardState.uploadedFiles.length === 0;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  async function uploadFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    clearBanner();
+    const fd = new FormData();
+    for (let i = 0; i < fileList.length; i++) fd.append('files', fileList[i]);
+    let res;
+    try {
+      res = await fetch(API + '/upload', {
+        method: 'POST',
+        headers: authHeaders(false),
+        body: fd,
+      });
+    } catch (e) {
+      showError('Không kết nối được máy chủ: ' + (e.message || String(e)));
+      return;
+    }
+    const p = await parseJsonOrText(res);
+    if (!res.ok) {
+      showError((p.json && p.json.error) || p.raw || 'Upload thất bại');
+      return;
+    }
+    const arr = Array.isArray(p.json) ? p.json : [];
+    const firstBatchPrimary = wizardState.uploadedFiles.length === 0;
+    arr.forEach(function (item, i) {
+      item.isPrimary = firstBatchPrimary && i === 0;
+      wizardState.uploadedFiles.push(item);
+    });
+    if (wizardState.uploadedFiles.length && !wizardState.uploadedFiles.some(function (x) { return x.isPrimary; })) {
+      wizardState.uploadedFiles[0].isPrimary = true;
+    }
+    renderFileList();
+    showOk('Đã tải ' + arr.length + ' file');
+  }
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  document.getElementById('pick-files').addEventListener('click', function (e) {
+    e.stopPropagation();
+    fileInput.click();
+  });
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    uploadFiles(fileInput.files);
+    fileInput.value = '';
+  });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    uploadFiles(e.dataTransfer.files);
+  });
+
+  document.getElementById('to-step-2').addEventListener('click', function () {
+    setStep(2);
+    ensureStep2Data();
+  });
+
+  document.querySelectorAll('[data-back]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      setStep(parseInt(btn.getAttribute('data-back'), 10));
+      if (wizardState.step === 2) {
+        ensureStep2Data();
+      }
+    });
+  });
+
+  document.getElementById('to-step-3').addEventListener('click', function () {
+    if (!wizardState.classificationId || !wizardState.disposalScheduleId) {
+      showError('Chọn phân loại và lịch lưu giữ');
+      return;
+    }
+    setStep(3);
+    syncMetaSidebar();
+  });
+
+  document.getElementById('meta-trigger').addEventListener('change', function () {
+    const v = this.value;
+    document.getElementById('f-triggerOverride').style.display = v === 'custom' ? 'block' : 'none';
+  });
+
+  function clearInvalid() {
+    document.querySelectorAll('.field.invalid').forEach(function (el) { el.classList.remove('invalid'); });
+  }
+
+  function validateStep3() {
+    clearInvalid();
+    let ok = true;
+    function need(idField, val) {
+      if (!val || !String(val).trim()) {
+        document.getElementById(idField).classList.add('invalid');
+        ok = false;
+      }
+    }
+    need('f-title', document.getElementById('meta-title').value);
+    need('f-issueDate', document.getElementById('meta-issueDate').value);
+    need('f-author', document.getElementById('meta-author').value);
+    need('f-issuing', document.getElementById('meta-issuing').value);
+    const trig = document.getElementById('meta-trigger').value;
+    if (trig === 'expiry_date') need('f-expiryDate', document.getElementById('meta-expiryDate').value);
+    if (trig === 'custom') need('f-triggerOverride', document.getElementById('meta-triggerOverride').value);
+    if (!ok) showError('Vui lòng điền đủ các trường bắt buộc (viền đỏ)');
+    return ok;
+  }
+
+  document.getElementById('to-step-4').addEventListener('click', function () {
+    if (!validateStep3()) return;
+    setStep(4);
+  });
+
+  function renderSummary() {
+    const eff = scheduleById(wizardState.disposalScheduleId);
+    const path = wizardState.selectedNode
+      ? buildPath(wizardState._classifications || [], wizardState.classificationId)
+      : '—';
+    let aggLabel = '—';
+    if (wizardState.aggregationId && wizardState._aggregations) {
+      const a = wizardState._aggregations.find(function (x) { return x.id === wizardState.aggregationId; });
+      if (a) aggLabel = a.code + ' — ' + a.title;
+    }
+    const filesHtml = wizardState.uploadedFiles.map(function (f) {
+      return '<li>' + escapeHtml(f.originalName) + (f.isPrimary ? ' <em>(chính)</em>' : '') + '</li>';
+    }).join('');
+    const tagNames = (wizardState._tags || [])
+      .filter(function (t) { return wizardState.tagIds.indexOf(t.id) >= 0; })
+      .map(function (t) { return t.name; })
+      .join(', ') || '—';
+
+    document.getElementById('summary').innerHTML =
+      '<section><strong>File</strong><ul style="margin:0.35rem 0 0 1.1rem;">' + filesHtml + '</ul></section>' +
+      '<section><strong>Phân loại</strong><p style="margin:0.35rem 0 0;">' + escapeHtml(path) + '</p></section>' +
+      '<section><strong>Lịch lưu giữ</strong><p style="margin:0.35rem 0 0;">' +
+        escapeHtml(eff ? eff.code + ' — ' + eff.name : '—') + '</p></section>' +
+      '<section><strong>Aggregation</strong><p style="margin:0.35rem 0 0;">' + escapeHtml(aggLabel) + '</p></section>' +
+      '<section><strong>Metadata</strong>' +
+      '<p style="margin:0.35rem 0 0;">Số hiệu: ' + escapeHtml(document.getElementById('meta-docRef').value || '—') + '</p>' +
+      '<p>Loại: ' + escapeHtml(document.getElementById('meta-docType').value) + '</p>' +
+      '<p>Tiêu đề: ' + escapeHtml(document.getElementById('meta-title').value) + '</p>' +
+      '<p>Ngày BH: ' + escapeHtml(document.getElementById('meta-issueDate').value) + '</p>' +
+      '<p>Ngày HL: ' + escapeHtml(document.getElementById('meta-effectiveDate').value || '—') + '</p>' +
+      '<p>Ngày hết HL: ' + escapeHtml(document.getElementById('meta-expiryDate').value || '—') + '</p>' +
+      '<p>Trigger: ' + escapeHtml(document.getElementById('meta-trigger').value) + '</p>' +
+      '<p>Người soạn: ' + escapeHtml(document.getElementById('meta-author').value) + '</p>' +
+      '<p>Đơn vị: ' + escapeHtml(document.getElementById('meta-issuing').value) + '</p>' +
+      '<p>Tags: ' + escapeHtml(tagNames) + '</p>' +
+      '</section>';
+  }
+
+  document.getElementById('btn-finalize').addEventListener('click', async function () {
+    clearBanner();
+    const btn = document.getElementById('btn-finalize');
+    btn.disabled = true;
+    const body = {
+      uploadedFiles: wizardState.uploadedFiles.map(function (f) {
+        return {
+          storedName: f.storedName,
+          originalName: f.originalName,
+          mimeType: f.mimeType,
+          size: f.size,
+          sha256: f.sha256,
+          isPrimary: !!f.isPrimary,
+          label: f.label || null,
+        };
+      }),
+      classificationId: wizardState.classificationId,
+      disposalScheduleId: wizardState.disposalScheduleId,
+      aggregationId: wizardState.aggregationId || null,
+      docRef: document.getElementById('meta-docRef').value.trim() || null,
+      title: document.getElementById('meta-title').value.trim(),
+      docType: document.getElementById('meta-docType').value,
+      issueDate: document.getElementById('meta-issueDate').value,
+      effectiveDate: document.getElementById('meta-effectiveDate').value || null,
+      expiryDate: document.getElementById('meta-expiryDate').value || null,
+      triggerEvent: document.getElementById('meta-trigger').value,
+      triggerDateOverride: document.getElementById('meta-triggerOverride').value || null,
+      author: document.getElementById('meta-author').value.trim(),
+      approver: document.getElementById('meta-approver').value.trim() || null,
+      issuingUnit: document.getElementById('meta-issuing').value.trim(),
+      description: document.getElementById('meta-desc').value.trim() || null,
+      keywords: document.getElementById('meta-kw').value.trim() || null,
+      tagIds: wizardState.tagIds.slice(),
+    };
+
+    let res;
+    try {
+      res = await fetch(API + '/finalize', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      showError('Không kết nối được máy chủ: ' + (e.message || String(e)));
+      btn.disabled = false;
+      return;
+    }
+    const p = await parseJsonOrText(res);
+    if (!res.ok) {
+      showError((p.json && p.json.error) || p.raw || 'Phong bế thất bại');
+      btn.disabled = false;
+      return;
+    }
+    const rec = p.json && p.json.record;
+    document.getElementById('modal-rec-num').textContent = rec ? rec.record_number : '—';
+    const link = document.getElementById('modal-link');
+    link.href = '/records/detail.html?id=' + encodeURIComponent(rec ? rec.id : '');
+    document.getElementById('success-modal').classList.add('show');
+    btn.disabled = false;
+  });
+
+  document.getElementById('modal-close').addEventListener('click', function () {
+    document.getElementById('success-modal').classList.remove('show');
+  });
+
+  setStep(1);
+})();
+  </script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Export / Import XML</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1300px;margin:0 auto;padding:16px}.layout{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:980px){.layout{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+    label{display:block;margin:7px 0 4px;color:var(--muted);font-size:12px}input,select,textarea{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+    .drop{border:2px dashed var(--line);border-radius:10px;padding:20px;text-align:center}
+    button{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+    button.primary{border-color:var(--ok);color:#a7f3d0}
+    .history{margin-top:10px}.muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">Export / Import XML</h2>
+    <div class="layout">
+      <section class="card">
+        <h3 style="margin:0 0 8px">Export</h3>
+        <label>Scope</label>
+        <select id="eScope"><option value="aggregation">aggregation</option><option value="classification">classification</option><option value="records">records</option></select>
+        <label>Scope ID</label><input id="eScopeId">
+        <label><input type="checkbox" id="eComp"> includeComponents</label>
+        <label><input type="checkbox" id="eEvt"> includeEventHistory</label>
+        <label><input type="checkbox" id="eAcl"> includeAcl</label>
+        <label><input type="checkbox" id="eDs"> includeDisposalSchedule</label>
+        <div class="muted" id="eSummary">Summary: ...</div>
+        <div style="margin-top:8px"><button id="eRun" class="primary">Xuất</button></div>
+      </section>
+      <section class="card">
+        <h3 style="margin:0 0 8px">Import</h3>
+        <div class="drop">
+          <input id="iFile" type="file" accept=".xml,.zip">
+        </div>
+        <div style="margin-top:8px"><button id="iPreview">Validate / Preview</button></div>
+        <pre id="iResult" class="muted" style="white-space:pre-wrap"></pre>
+        <div><button id="iConfirm" class="primary" disabled>Import</button></div>
+      </section>
+    </div>
+    <section class="card history">
+      <h3 style="margin:0 0 8px">Lịch sử export/import</h3>
+      <ul id="history"></ul>
+    </section>
+  </div>
+  <script>
+  (function(){
+    const API='/api/records'; let previewId=null;
+    const h=(json)=>{const t=localStorage.getItem('token');const x=t?{Authorization:'Bearer '+t}:{ };if(json)x['Content-Type']='application/json';return x;};
+    const hist=[];
+    function addHist(s){hist.unshift(new Date().toLocaleString()+' - '+s); history.innerHTML=hist.slice(0,20).map(x=>'<li>'+x+'</li>').join('');}
+    function updateSummary(){eSummary.textContent=`Summary: scope=${eScope.value}, includeComponents=${eComp.checked}, includeEventHistory=${eEvt.checked}, includeAcl=${eAcl.checked}, includeDisposalSchedule=${eDs.checked}`;}
+    eScope.onchange=updateSummary; [eComp,eEvt,eAcl,eDs].forEach(x=>x.onchange=updateSummary); updateSummary();
+    eRun.onclick=async()=>{
+      try{
+        const body={scope:eScope.value,scopeId:eScopeId.value.trim()||null,includeComponents:eComp.checked,includeEventHistory:eEvt.checked,includeAcl:eAcl.checked,includeDisposalSchedule:eDs.checked};
+        const r=await fetch(API+'/export',{method:'POST',headers:h(true),body:JSON.stringify(body)});
+        if(!r.ok){const t=await r.text();throw new Error(t);}
+        const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='records-export'; a.click(); URL.revokeObjectURL(url);
+        addHist('Export thành công');
+      }catch(e){alert(e.message||String(e));}
+    };
+    iPreview.onclick=async()=>{
+      try{
+        if(!iFile.files[0]) return alert('Chọn file');
+        const fd=new FormData(); fd.append('file',iFile.files[0]);
+        const r=await fetch(API+'/import',{method:'POST',headers:{Authorization:h(false).Authorization||''},body:fd});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Preview fail');
+        previewId=j.previewId; iResult.textContent=JSON.stringify(j,null,2); iConfirm.disabled=false; addHist('Preview import thành công');
+      }catch(e){alert(e.message||String(e));}
+    };
+    iConfirm.onclick=async()=>{
+      try{
+        if(!previewId) return;
+        const r=await fetch(API+'/import/confirm',{method:'POST',headers:h(true),body:JSON.stringify({previewId})});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Import fail');
+        addHist('Import thành công, inserted='+j.inserted); previewId=null; iConfirm.disabled=true;
+      }catch(e){alert(e.message||String(e));}
+    };
+  })();
+  </script>
+</body>
+</html>

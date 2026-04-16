@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audit Trail</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1400px;margin:0 auto;padding:16px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}@media(max-width:900px){.kpis{grid-template-columns:1fr 1fr}}
+    .kpi,.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+    .layout{display:grid;grid-template-columns:1fr 370px;gap:10px}@media(max-width:1100px){.layout{grid-template-columns:1fr}}
+    .toolbar{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:8px}.toolbar input,.toolbar select{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+    table{width:100%;border-collapse:collapse}th,td{font-size:12px;padding:7px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted)}
+    tr:hover{background:#0b1221;cursor:pointer}.mono{font-family:ui-monospace,monospace}.muted{color:var(--muted)} pre{white-space:pre-wrap;background:#0b1221;padding:8px;border:1px solid var(--line);border-radius:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">Event History / Audit Trail</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="muted">Tổng events</div><strong id="kTotal">0</strong></div>
+      <div class="kpi"><div class="muted">Events 7 ngày</div><strong id="k7d">0</strong></div>
+      <div class="kpi"><div class="muted">Disposal events</div><strong id="kDisp">0</strong></div>
+      <div class="kpi"><div class="muted">Chain integrity</div><strong id="kIntegrity">-</strong></div>
+    </div>
+    <div class="layout">
+      <section class="card">
+        <div class="toolbar">
+          <select id="fEvent"><option value="">event_type</option></select>
+          <input id="fEntityType" placeholder="entity_type">
+          <input id="fActor" placeholder="actor_id">
+          <input id="fFrom" type="date">
+          <input id="fTo" type="date">
+          <button id="btnFilter">Lọc</button>
+        </div>
+        <table>
+          <thead><tr><th>Thời gian</th><th>Event</th><th>Entity type</th><th>Entity</th><th>Actor</th><th>Hash</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+      </section>
+      <aside class="card">
+        <h3 style="margin:0 0 8px">Chi tiết event</h3>
+        <div id="detail" class="muted">Chọn một dòng để xem.</div>
+      </aside>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const API='/api/records/audit'; const state={rows:[],stats:null};
+    const h=()=>{const t=localStorage.getItem('token');return t?{Authorization:'Bearer '+t}:{ }};
+    const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    function jfmt(v){try{return JSON.stringify(typeof v==='string'?JSON.parse(v):v,null,2);}catch{return String(v||'');}}
+    async function loadStats(){
+      const r=await fetch(API+'/stats',{headers:h()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi stats');
+      state.stats=j; kTotal.textContent=j.total_events||0; k7d.textContent=(j.by_event_type||[]).reduce((a,b)=>a+b.c,0); kDisp.textContent=j.disposal_events_7d||0; kIntegrity.textContent=j.integrity_check&&j.integrity_check.ok?'OK':'FAIL';
+      const sel=document.getElementById('fEvent'); sel.innerHTML='<option value="">event_type</option>'; (j.by_event_type||[]).forEach(x=>{const o=document.createElement('option');o.value=x.event_type;o.textContent=x.event_type+' ('+x.c+')';sel.appendChild(o);});
+    }
+    async function loadRows(){
+      const q=new URLSearchParams({page:'1',limit:'50'}); if(fEvent.value)q.set('event_type',fEvent.value); if(fEntityType.value)q.set('entity_type',fEntityType.value.trim()); if(fActor.value)q.set('actor_id',fActor.value.trim()); if(fFrom.value)q.set('from',fFrom.value); if(fTo.value)q.set('to',fTo.value);
+      const r=await fetch(API+'?'+q.toString(),{headers:h()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi logs');
+      state.rows=j.rows||[]; tb.innerHTML=state.rows.map((x,i)=>`<tr data-i="${i}"><td>${esc(x.occurred_at)}</td><td>${esc(x.event_type)}</td><td>${esc(x.entity_type)}</td><td>${esc(x.entity_title||x.entity_id)}</td><td>${esc(x.actor_label||x.actor_id||'SYSTEM')}</td><td class="mono">${esc((x.event_hash||'').slice(0,12))}</td></tr>`).join('');
+      tb.querySelectorAll('tr').forEach(tr=>tr.onclick=()=>showDetail(parseInt(tr.dataset.i,10)));
+    }
+    function showDetail(i){
+      const x=state.rows[i]; if(!x) return;
+      detail.innerHTML=`<div><strong>${esc(x.event_type)}</strong> · ${esc(x.entity_type)} · ${esc(x.entity_id)}</div>
+      <div class="muted">Chain: prev=${esc((x.prev_event_hash||'').slice(0,12))} / curr=${esc((x.event_hash||'').slice(0,12))}</div>
+      <h4>before_state</h4><pre>${esc(jfmt(x.before_state))}</pre>
+      <h4>after_state</h4><pre>${esc(jfmt(x.after_state))}</pre>
+      <h4>payload</h4><pre>${esc(jfmt(x.payload))}</pre>`;
+    }
+    btnFilter.onclick=async()=>{await loadRows();};
+    (async()=>{try{await loadStats();await loadRows();}catch(e){alert(e.message||String(e));}})();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Classification</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#1e293b; --line:#334155; --txt:#e2e8f0; --muted:#94a3b8; --ok:#10b981; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}.layout{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:920px){.layout{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+    .row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px;margin-bottom:10px}
+    .stat{border:1px solid var(--line);border-radius:8px;padding:8px}
+    .muted{color:var(--muted)} ul{list-style:none;margin:0;padding-left:16px}.node{padding:5px 6px;border-radius:7px;cursor:pointer}
+    .node:hover{background:#0b1221}.node.on{outline:1px solid var(--ok);background:rgba(16,185,129,.15)}
+    .badge{border:1px solid var(--line);border-radius:999px;padding:1px 7px;font-size:11px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px} input,textarea,select{width:100%;background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px}
+    textarea{min-height:84px} .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    button{background:#0b1221;color:var(--txt);border:1px solid var(--line);padding:8px 10px;border-radius:8px;cursor:pointer}
+    button.primary{border-color:var(--ok);color:#a7f3d0} button:disabled{opacity:.5;cursor:not-allowed}
+    .err{display:none;background:rgba(127,29,29,.3);border:1px solid #7f1d1d;color:#fecaca;padding:8px;border-radius:8px;margin-bottom:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">Admin - Classification Tree</h2>
+    <div id="err" class="err"></div>
+    <div class="row">
+      <div class="stat"><div class="muted">Tổng records</div><strong id="stTotal">0</strong></div>
+      <div class="stat"><div class="muted">Active</div><strong id="stActive">0</strong></div>
+      <div class="stat"><div class="muted">Draft</div><strong id="stDraft">0</strong></div>
+      <div class="stat"><div class="muted">Sắp đến hạn (&lt;30d)</div><strong id="stSoon">0</strong></div>
+    </div>
+    <div class="layout">
+      <section class="card">
+        <h3 style="margin:0 0 8px">Cây phân loại</h3>
+        <div id="tree"></div>
+      </section>
+      <section class="card">
+        <h3 style="margin:0 0 8px">Chi tiết node</h3>
+        <div class="muted" id="noSel">Chọn một node để chỉnh sửa.</div>
+        <div id="formWrap" style="display:none">
+          <label>Code</label><input id="fCode" disabled>
+          <label>Tên</label><input id="fName">
+          <label>Description</label><textarea id="fDesc"></textarea>
+          <label>Disposal Schedule</label><select id="fDs"></select>
+          <label><input type="checkbox" id="fOpen"> Is open</label>
+          <label><input type="checkbox" id="fInherit"> Kế thừa DS cho node con</label>
+          <div class="actions">
+            <button class="primary" id="btnSave">Lưu</button>
+            <button id="btnAddChild">Thêm node con</button>
+            <button id="btnDelete">Xóa node</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const API='/api/admin/records';
+    const state={nodes:[],ds:[],selected:null};
+    const h=()=>{const t=localStorage.getItem('token');return t?{Authorization:'Bearer '+t,'Content-Type':'application/json'}:{'Content-Type':'application/json'}};
+    const showErr=(m)=>{const e=document.getElementById('err');e.style.display='block';e.textContent=m||'Lỗi'};
+    const clearErr=()=>{const e=document.getElementById('err');e.style.display='none';e.textContent='';};
+    const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+    async function loadAll(){
+      clearErr();
+      try{
+        const [c, d, r] = await Promise.all([
+          fetch(API+'/classifications',{headers:h()}),
+          fetch(API+'/disposal-schedules',{headers:h()}),
+          fetch('/api/records?limit=200',{headers:h()}),
+        ]);
+        const cj=await c.json(); const dj=await d.json(); const rj=await r.json();
+        if(!c.ok) throw new Error(cj.error||'Lỗi classifications');
+        if(!d.ok) throw new Error(dj.error||'Lỗi disposal schedules');
+        if(!r.ok) throw new Error(rj.error||'Lỗi stats records');
+        state.nodes=cj; state.ds=dj;
+        const list=rj.records||[];
+        document.getElementById('stTotal').textContent=String(rj.total||list.length||0);
+        document.getElementById('stActive').textContent=String(list.filter(x=>x.state==='active').length);
+        document.getElementById('stDraft').textContent=String(list.filter(x=>x.state==='draft').length);
+        document.getElementById('stSoon').textContent=String(list.filter(x=>typeof x.days_to_disposal==='number'&&x.days_to_disposal>=0&&x.days_to_disposal<30).length);
+        renderTree(); fillDs();
+      }catch(e){showErr(e.message||String(e))}
+    }
+    function fillDs(){
+      const s=document.getElementById('fDs'); s.innerHTML='<option value="">-- none --</option>';
+      state.ds.forEach(d=>{const o=document.createElement('option');o.value=d.id;o.textContent=d.code+' - '+d.name;s.appendChild(o);});
+    }
+    function renderTree(){
+      const byParent={}; state.nodes.forEach(n=>{const p=n.parent_id||'root';(byParent[p]=byParent[p]||[]).push(n)});
+      const root=document.getElementById('tree'); root.innerHTML='';
+      function draw(pid,holder){
+        const arr=byParent[pid]||[]; if(!arr.length) return;
+        const ul=document.createElement('ul');
+        arr.forEach(n=>{
+          const li=document.createElement('li');
+          const ds=n.disposal_schedule_code?` <span class="badge">${esc(n.disposal_schedule_code)}</span>`:'';
+          const div=document.createElement('div'); div.className='node'+(state.selected&&state.selected.id===n.id?' on':'');
+          div.innerHTML=`📁 ${esc(n.code)} - ${esc(n.name)} ${ds} <span class="muted">(${n.record_count||0})</span>`;
+          div.onclick=()=>selectNode(n.id); li.appendChild(div); draw(n.id,li); ul.appendChild(li);
+        }); holder.appendChild(ul);
+      } draw('root',root);
+    }
+    function selectNode(id){
+      state.selected=state.nodes.find(n=>n.id===id)||null; renderTree();
+      document.getElementById('noSel').style.display=state.selected?'none':'block';
+      document.getElementById('formWrap').style.display=state.selected?'block':'none';
+      if(!state.selected) return;
+      const n=state.selected;
+      document.getElementById('fCode').value=n.code||'';
+      document.getElementById('fName').value=n.name||'';
+      document.getElementById('fDesc').value=n.description||'';
+      document.getElementById('fDs').value=n.disposal_schedule_id||'';
+      document.getElementById('fOpen').checked=n.is_open===1;
+      document.getElementById('fInherit').checked=n.inherit_disposal===1;
+      document.getElementById('btnDelete').disabled=(n.record_count||0)>0||state.nodes.some(x=>x.parent_id===n.id);
+    }
+
+    async function saveNode(){
+      if(!state.selected) return;
+      clearErr();
+      try{
+        const body={
+          name:document.getElementById('fName').value.trim(),
+          description:document.getElementById('fDesc').value,
+          disposal_schedule_id:document.getElementById('fDs').value||null,
+          is_open:document.getElementById('fOpen').checked?1:0,
+          inherit_disposal:document.getElementById('fInherit').checked?1:0
+        };
+        const r=await fetch(API+'/classifications/'+encodeURIComponent(state.selected.id),{method:'PATCH',headers:h(),body:JSON.stringify(body)});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi cập nhật node');
+        await loadAll(); selectNode(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function addChild(){
+      if(!state.selected) return;
+      const code=prompt('Code node con (vd SCI.NEW):'); if(!code) return;
+      const name=prompt('Tên node con:'); if(!name) return;
+      clearErr();
+      try{
+        const body={code:code.trim(),name:name.trim(),parent_id:state.selected.id,disposal_schedule_id:state.selected.disposal_schedule_id||null,inherit_disposal:1,is_open:1};
+        const r=await fetch(API+'/classifications',{method:'POST',headers:h(),body:JSON.stringify(body)});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi tạo node con');
+        await loadAll(); selectNode(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function deleteNode(){
+      if(!state.selected) return;
+      if(!confirm('Xóa node đã chọn?')) return;
+      clearErr();
+      try{
+        const r=await fetch(API+'/classifications/'+encodeURIComponent(state.selected.id),{method:'DELETE',headers:h()});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi xóa node');
+        state.selected=null; await loadAll();
+      }catch(e){showErr(e.message||String(e))}
+    }
+
+    document.getElementById('btnSave').onclick=saveNode;
+    document.getElementById('btnAddChild').onclick=addChild;
+    document.getElementById('btnDelete').onclick=deleteNode;
+    loadAll();
+  })();
+  </script>
+</body>
+</html>

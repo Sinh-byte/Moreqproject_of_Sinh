@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aggregation Manager</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b;--purple:#8b5cf6;--orange:#f97316}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1400px;margin:0 auto;padding:16px}
+    .layout{display:grid;grid-template-columns:280px 1fr 260px;gap:12px}@media(max-width:1100px){.layout{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+    .tree ul{list-style:none;margin:0;padding-left:14px}.node{padding:6px;border-radius:7px;cursor:pointer}.node:hover{background:#0b1221}.node.on{outline:1px solid var(--ok);background:rgba(16,185,129,.15)}
+    .badge{border:1px solid var(--line);border-radius:999px;padding:1px 7px;font-size:11px}
+    .open{color:#a7f3d0}.closed{color:#fdba74}
+    .f-research{color:#86efac}.f-ip{color:#c4b5fd}.f-contract{color:#fdba74}.f-other{color:#bfdbfe}
+    label{display:block;font-size:12px;color:var(--muted);margin:6px 0 4px}
+    input,textarea,select{width:100%;background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px}
+    textarea{min-height:70px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    button{background:#0b1221;color:var(--txt);border:1px solid var(--line);padding:8px 10px;border-radius:8px;cursor:pointer}
+    button.primary{border-color:var(--ok);color:#a7f3d0}
+    .bar{height:10px;background:#0b1221;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+    .bar>span{display:block;height:100%;background:linear-gradient(90deg,#10b981,#34d399)}
+    .records li{padding:6px 0;border-bottom:1px solid var(--line)}
+    .muted{color:var(--muted)} .err{display:none;background:rgba(127,29,29,.3);border:1px solid #7f1d1d;color:#fecaca;padding:8px;border-radius:8px;margin-bottom:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">Aggregation Manager</h2>
+    <div id="err" class="err"></div>
+    <div class="layout">
+      <aside class="card">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <select id="typeFilter">
+            <option value="">Tất cả loại</option>
+            <option value="research_project">research_project</option>
+            <option value="personnel">personnel</option>
+            <option value="contract">contract</option>
+            <option value="ip">ip</option>
+            <option value="international">international</option>
+            <option value="other">other</option>
+          </select>
+          <button id="newBtn">+ New</button>
+        </div>
+        <div id="tree" class="tree"></div>
+      </aside>
+
+      <main class="card">
+        <div id="empty" class="muted">Chọn một aggregation để xem chi tiết.</div>
+        <div id="detail" style="display:none">
+          <div class="row2">
+            <div><label>Code</label><input id="fCode" disabled></div>
+            <div><label>Tiêu đề</label><input id="fTitle"></div>
+          </div>
+          <div class="row2">
+            <div>
+              <label>Loại</label>
+              <select id="fType">
+                <option value="research_project">research_project</option>
+                <option value="personnel">personnel</option>
+                <option value="contract">contract</option>
+                <option value="ip">ip</option>
+                <option value="international">international</option>
+                <option value="other">other</option>
+              </select>
+            </div>
+            <div><label>Parent ID</label><input id="fParent"></div>
+          </div>
+          <div class="row2">
+            <div><label>Classification ID</label><input id="fClass"></div>
+            <div><label>Disposal Schedule ID</label><input id="fDs"></div>
+          </div>
+          <div class="row2">
+            <div><label>Manager ID</label><input id="fManager"></div>
+            <div><label>STIMS Project ID</label><input id="fProject"></div>
+          </div>
+          <label>Notes</label><textarea id="fNotes"></textarea>
+          <label><input type="checkbox" id="fOpen"> is_open</label>
+          <div class="actions">
+            <button class="primary" id="saveBtn">Lưu</button>
+            <button id="closeBtn">Đóng hồ sơ</button>
+          </div>
+
+          <h3 style="margin:14px 0 8px">Progress theo giai đoạn</h3>
+          <div id="progressBox"></div>
+
+          <h3 style="margin:14px 0 8px">Records gần nhất</h3>
+          <ul id="recordsList" class="records" style="margin:0;padding-left:18px"></ul>
+        </div>
+      </main>
+
+      <aside class="card">
+        <h3 style="margin:0 0 8px">STIMS Links</h3>
+        <div id="linksInfo" class="muted">—</div>
+        <div style="margin-top:10px">
+          <label>Đề tài</label><select><option>-- chọn liên kết --</option></select>
+          <label>Publications</label><select><option>-- chọn liên kết --</option></select>
+          <label>Thiết bị</label><select><option>-- chọn liên kết --</option></select>
+          <label>Hội nghị</label><select><option>-- chọn liên kết --</option></select>
+          <label>Researchers</label><select><option>-- chọn liên kết --</option></select>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const API='/api/records/aggregations';
+    const state={list:[],selected:null,filterType:''};
+    const h=(json)=>{const t=localStorage.getItem('token');const x=t?{Authorization:'Bearer '+t}:{ };if(json)x['Content-Type']='application/json';return x;};
+    const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const showErr=(m)=>{const e=document.getElementById('err');e.style.display='block';e.textContent=m||'Lỗi';};
+    const clearErr=()=>{const e=document.getElementById('err');e.style.display='none';e.textContent='';};
+    function typeClass(t){if(t==='research_project')return'f-research';if(t==='ip')return'f-ip';if(t==='contract')return'f-contract';return'f-other';}
+    async function loadList(){
+      clearErr();
+      try{
+        const q=state.filterType?('?type='+encodeURIComponent(state.filterType)):'';
+        const r=await fetch(API+q,{headers:h(false)}); const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'Lỗi list');
+        state.list=Array.isArray(j)?j:[]; renderTree();
+      }catch(e){showErr(e.message||String(e))}
+    }
+    function renderTree(){
+      const byParent={}; state.list.forEach(n=>{const p=n.parent_id||'root';(byParent[p]=byParent[p]||[]).push(n)});
+      const root=document.getElementById('tree'); root.innerHTML='';
+      function draw(pid,holder){
+        const arr=byParent[pid]||[]; if(!arr.length) return;
+        const ul=document.createElement('ul');
+        arr.forEach(n=>{
+          const li=document.createElement('li');
+          const d=document.createElement('div'); d.className='node'+(state.selected&&state.selected.id===n.id?' on':'');
+          d.innerHTML=`<span class="${typeClass(n.agg_type)}">📁</span> ${esc(n.code)} - ${esc(n.title)} <span class="badge ${n.is_open===1?'open':'closed'}">${n.is_open===1?'open':'closed'}</span> <span class="badge">${n.record_count||0}</span>`;
+          d.onclick=()=>selectNode(n.id); li.appendChild(d); draw(n.id,li); ul.appendChild(li);
+        }); holder.appendChild(ul);
+      } draw('root',root);
+    }
+    async function selectNode(id){
+      clearErr();
+      try{
+        const r=await fetch(API+'/'+encodeURIComponent(id),{headers:h(false)}); const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'Lỗi detail');
+        state.selected=j; renderTree(); renderDetail();
+      }catch(e){showErr(e.message||String(e))}
+    }
+    function renderDetail(){
+      const a=state.selected;
+      document.getElementById('empty').style.display=a?'none':'block';
+      document.getElementById('detail').style.display=a?'block':'none';
+      if(!a) return;
+      fCode.value=a.code||''; fTitle.value=a.title||''; fType.value=a.agg_type||'other'; fParent.value=a.parent_id||'';
+      fClass.value=a.classification_id||''; fDs.value=a.disposal_schedule_id||''; fManager.value=a.manager_id||'';
+      fProject.value=a.stims_project_id||''; fNotes.value=a.notes||''; fOpen.checked=a.is_open===1;
+      closeBtn.disabled=a.is_open!==1;
+
+      const p=a.progress||{dang_ky:0,tien_do:0,tai_chinh:0,nghiem_thu:0};
+      const total=p.dang_ky+p.tien_do+p.tai_chinh+p.nghiem_thu;
+      function item(label,val){const pct=total?Math.round((val/total)*100):0;return `<div style="margin:7px 0"><div class="muted">${label} (${val})</div><div class="bar"><span style="width:${pct}%"></span></div></div>`;}
+      progressBox.innerHTML=item('Đăng ký',p.dang_ky)+item('Tiến độ',p.tien_do)+item('Tài chính',p.tai_chinh)+item('Nghiệm thu',p.nghiem_thu);
+
+      recordsList.innerHTML=(a.records||[]).map(r=>`<li><strong>${esc(r.title)}</strong><br><span class="muted">${esc(r.record_number||'')} · ${esc(r.doc_type||'')} · ${esc(r.state||'')}</span></li>`).join('')||'<li class="muted">Không có record.</li>';
+      linksInfo.innerHTML=`Project ID: <strong>${esc(a.stims_links&&a.stims_links.stims_project_id||'N/A')}</strong><br>Project title: <strong>${esc(a.stims_links&&a.stims_links.stims_project_title||'N/A')}</strong>`+(a.stims_links&&a.stims_links.missing_project_warning?'<br><span style="color:#fca5a5">Warning: project đã bị xóa</span>':'');
+    }
+    async function save(){
+      if(!state.selected) return;
+      clearErr();
+      try{
+        const body={
+          title:fTitle.value.trim(),agg_type:fType.value,parent_id:fParent.value.trim()||null,classification_id:fClass.value.trim()||null,
+          disposal_schedule_id:fDs.value.trim()||null,is_open:fOpen.checked?1:0,manager_id:fManager.value.trim()||null,
+          stims_project_id:fProject.value.trim()||null,notes:fNotes.value.trim()||null
+        };
+        const r=await fetch(API+'/'+encodeURIComponent(state.selected.id),{method:'PATCH',headers:h(true),body:JSON.stringify(body)});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi lưu');
+        await loadList(); await selectNode(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function closeAgg(){
+      if(!state.selected) return;
+      if(!confirm('Đóng hồ sơ này?')) return;
+      clearErr();
+      try{
+        const r=await fetch(API+'/'+encodeURIComponent(state.selected.id)+'/close',{method:'PATCH',headers:h(true)});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi đóng hồ sơ');
+        await loadList(); await selectNode(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function createNew(){
+      const title=prompt('Tiêu đề aggregation mới:'); if(!title) return;
+      const type=prompt('Loại (research_project/personnel/contract/ip/international/other):','research_project')||'research_project';
+      clearErr();
+      try{
+        const r=await fetch(API,{method:'POST',headers:h(true),body:JSON.stringify({title:title.trim(),agg_type:type.trim()})});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi tạo aggregation');
+        await loadList(); await selectNode(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    typeFilter.onchange=()=>{state.filterType=typeFilter.value;state.selected=null;loadList();renderDetail();};
+    saveBtn.onclick=save; closeBtn.onclick=closeAgg; newBtn.onclick=createNew;
+    loadList();
+  })();
+  </script>
+</body>
+</html>

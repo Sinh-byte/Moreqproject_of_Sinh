@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Danh sách Records - MoReq2010</title>
+  <style>
+    :root {
+      --navy: #0f172a;
+      --panel: #17223a;
+      --emerald: #10b981;
+      --muted: #93a4bf;
+      --border: #2d3a53;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --ok: #10b981;
+      --review: #3b82f6;
+      --draft: #fb923c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--navy); color: #e5edf9; font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+    .layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .toolbar { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    @media (max-width: 980px) { .toolbar { grid-template-columns: 1fr; } }
+    input, select {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #0e1628; color: #e5edf9;
+    }
+    .tree ul { list-style: none; padding-left: 16px; margin: 2px 0; }
+    .tree-item { padding: 5px 7px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .tree-item:hover { background: rgba(16, 185, 129, 0.12); }
+    .tree-item.on { background: rgba(16, 185, 129, 0.2); outline: 1px solid var(--emerald); }
+    .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+    th { text-align: left; color: var(--muted); background: #111b2f; position: sticky; top: 0; z-index: 1; }
+    tr.overdue { background: rgba(239, 68, 68, 0.14); }
+    tr.due-soon { background: rgba(245, 158, 11, 0.14); }
+    .state { border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .state-active { background: rgba(16, 185, 129, 0.22); color: #a7f3d0; }
+    .state-draft { background: rgba(251, 146, 60, 0.22); color: #fed7aa; }
+    .state-review { background: rgba(59, 130, 246, 0.22); color: #bfdbfe; }
+    .state-disposed { background: rgba(239, 68, 68, 0.22); color: #fecaca; }
+    .state-preserved { background: rgba(16, 185, 129, 0.22); color: #a7f3d0; }
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag { border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; font-size: 11px; color: #cfe2ff; }
+    .row-link { color: #9be8cc; text-decoration: none; font-weight: 600; }
+    .row-link:hover { text-decoration: underline; }
+    .actions a { color: #9be8cc; text-decoration: none; }
+    .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; }
+    .pagination button { border: 1px solid var(--border); background: #111b2f; color: #e5edf9; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .err { display: none; margin-bottom: 10px; border: 1px solid #7f1d1d; background: rgba(127, 29, 29, 0.3); color: #fecaca; padding: 9px 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px;">Danh sách Record</h2>
+    <div id="err" class="err"></div>
+    <div class="layout">
+      <aside class="panel">
+        <h3 style="margin:0 0 8px; font-size:15px;">Phân loại</h3>
+        <div id="classTree" class="tree"></div>
+      </aside>
+
+      <main class="panel">
+        <div class="toolbar">
+          <input id="search" placeholder="Tìm theo tiêu đề, số hiệu, record number..." />
+          <select id="docType">
+            <option value="">Tất cả loại</option>
+            <option value="regulation">Regulation</option>
+            <option value="decision">Decision</option>
+            <option value="contract">Contract</option>
+            <option value="minutes">Minutes</option>
+            <option value="memo">Memo</option>
+            <option value="plan">Plan</option>
+            <option value="dispatch">Dispatch</option>
+            <option value="other">Other</option>
+          </select>
+          <select id="state">
+            <option value="">Tất cả trạng thái</option>
+            <option value="active">active</option>
+            <option value="draft">draft</option>
+            <option value="review">review</option>
+            <option value="disposed">disposed</option>
+            <option value="preserved">preserved</option>
+          </select>
+          <select id="year">
+            <option value="">Tất cả năm</option>
+          </select>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" /></th>
+                <th>Tên + Số hiệu</th>
+                <th>Loại</th>
+                <th>Ngày ban hành</th>
+                <th>Hạn disposal</th>
+                <th>Trạng thái</th>
+                <th>Tag</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <div id="pageInfo">Trang 1/1</div>
+          <div style="display:flex; gap:8px;">
+            <button id="prevBtn">Trước</button>
+            <button id="nextBtn">Sau</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const API = '/api/records';
+      const state = {
+        page: 1,
+        limit: 20,
+        search: '',
+        stateFilter: '',
+        docType: '',
+        classificationId: '',
+        year: '',
+        totalPages: 1,
+        classes: [],
+      };
+
+      function authHeaders() {
+        const token = localStorage.getItem('token');
+        return token ? { Authorization: 'Bearer ' + token } : {};
+      }
+
+      function showError(msg) {
+        const el = document.getElementById('err');
+        el.style.display = 'block';
+        el.textContent = msg || 'Đã xảy ra lỗi';
+      }
+      function clearError() {
+        const el = document.getElementById('err');
+        el.style.display = 'none';
+        el.textContent = '';
+      }
+
+      function esc(s) {
+        return String(s || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function stateClass(value) {
+        if (value === 'active') return 'state-active';
+        if (value === 'draft') return 'state-draft';
+        if (value === 'review') return 'state-review';
+        if (value === 'disposed') return 'state-disposed';
+        return 'state-preserved';
+      }
+
+      function buildQuery() {
+        const q = new URLSearchParams();
+        q.set('page', String(state.page));
+        q.set('limit', String(state.limit));
+        q.set('sortBy', 'capture_date');
+        q.set('sortDir', 'desc');
+        if (state.search) q.set('search', state.search);
+        if (state.stateFilter) q.set('state', state.stateFilter);
+        if (state.docType) q.set('docType', state.docType);
+        if (state.classificationId) q.set('classificationId', state.classificationId);
+        if (state.year) q.set('year', state.year);
+        return q.toString();
+      }
+
+      async function loadRecords() {
+        clearError();
+        try {
+          const res = await fetch(API + '?' + buildQuery(), { headers: authHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Không tải được records');
+          state.totalPages = data.totalPages || 1;
+          renderTable(data.records || []);
+          document.getElementById('pageInfo').textContent = 'Trang ' + state.page + '/' + state.totalPages + ' - ' + (data.total || 0) + ' bản ghi';
+          document.getElementById('prevBtn').disabled = state.page <= 1;
+          document.getElementById('nextBtn').disabled = state.page >= state.totalPages;
+        } catch (e) {
+          showError(e.message || String(e));
+        }
+      }
+
+      function renderTable(records) {
+        const tbody = document.getElementById('tbody');
+        tbody.innerHTML = '';
+        if (!records.length) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#9fb2cd;">Không có dữ liệu</td></tr>';
+          return;
+        }
+        records.forEach(function (r) {
+          const tr = document.createElement('tr');
+          if (typeof r.days_to_disposal === 'number') {
+            if (r.days_to_disposal < 0) tr.classList.add('overdue');
+            else if (r.days_to_disposal < 30) tr.classList.add('due-soon');
+          }
+          const tags = Array.isArray(r.tags) ? r.tags : [];
+          tr.innerHTML =
+            '<td><input type="checkbox"></td>' +
+            '<td><a class="row-link" href="/records/detail.html?id=' + encodeURIComponent(r.id) + '">' + esc(r.title) + '</a><br><small>' + esc(r.record_number || '') + ' · ' + esc(r.doc_ref || '') + '</small></td>' +
+            '<td>' + esc(r.doc_type || '') + '</td>' +
+            '<td>' + esc(r.issue_date || '—') + '</td>' +
+            '<td>' + esc(r.retention_due_date || '—') + (typeof r.days_to_disposal === 'number' ? '<br><small>' + r.days_to_disposal + ' ngày</small>' : '') + '</td>' +
+            '<td><span class="state ' + stateClass(r.state) + '">' + esc(r.state) + '</span></td>' +
+            '<td><div class="tags">' + tags.map(function (t) { return '<span class="tag">' + esc(t.name) + '</span>'; }).join('') + '</div></td>' +
+            '<td class="actions"><a href="/records/detail.html?id=' + encodeURIComponent(r.id) + '">Mở</a></td>';
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function loadClassifications() {
+        try {
+          const res = await fetch('/api/records/capture/classifications', { headers: authHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Không tải được phân loại');
+          state.classes = Array.isArray(data) ? data : [];
+          renderClassTree();
+        } catch (e) {
+          showError(e.message || String(e));
+        }
+      }
+
+      function renderClassTree() {
+        const root = document.getElementById('classTree');
+        const byParent = {};
+        state.classes.forEach(function (c) {
+          const pid = c.parent_id || '__root__';
+          if (!byParent[pid]) byParent[pid] = [];
+          byParent[pid].push(c);
+        });
+        root.innerHTML = '';
+
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Bỏ lọc phân loại';
+        clearBtn.style.cssText = 'margin-bottom:8px; border:1px solid var(--border); background:#111b2f; color:#e5edf9; border-radius:8px; padding:6px 8px; cursor:pointer;';
+        clearBtn.onclick = function () {
+          state.classificationId = '';
+          state.page = 1;
+          renderClassTree();
+          loadRecords();
+        };
+        root.appendChild(clearBtn);
+
+        function renderNode(parentId, holder) {
+          const items = byParent[parentId] || [];
+          if (!items.length) return;
+          const ul = document.createElement('ul');
+          items.forEach(function (it) {
+            const li = document.createElement('li');
+            const row = document.createElement('div');
+            row.className = 'tree-item' + (state.classificationId === it.id ? ' on' : '');
+            row.textContent = it.code + ' - ' + it.name;
+            row.onclick = function () {
+              state.classificationId = it.id;
+              state.page = 1;
+              renderClassTree();
+              loadRecords();
+            };
+            li.appendChild(row);
+            renderNode(it.id, li);
+            ul.appendChild(li);
+          });
+          holder.appendChild(ul);
+        }
+
+        renderNode('__root__', root);
+      }
+
+      function initYearOptions() {
+        const yearSel = document.getElementById('year');
+        const now = new Date().getFullYear();
+        for (let y = now; y >= now - 20; y--) {
+          const op = document.createElement('option');
+          op.value = String(y);
+          op.textContent = String(y);
+          yearSel.appendChild(op);
+        }
+      }
+
+      let searchTimer = null;
+      document.getElementById('search').addEventListener('input', function (e) {
+        state.search = e.target.value.trim();
+        state.page = 1;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(loadRecords, 300);
+      });
+      document.getElementById('docType').addEventListener('change', function (e) {
+        state.docType = e.target.value;
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('state').addEventListener('change', function (e) {
+        state.stateFilter = e.target.value;
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('year').addEventListener('change', function (e) {
+        state.year = e.target.value;
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('prevBtn').addEventListener('click', function () {
+        if (state.page > 1) {
+          state.page -= 1;
+          loadRecords();
+        }
+      });
+      document.getElementById('nextBtn').addEventListener('click', function () {
+        if (state.page < state.totalPages) {
+          state.page += 1;
+          loadRecords();
+        }
+      });
+
+      initYearOptions();
+      loadClassifications();
+      loadRecords();
+    })();
+  </script>
+</body>
+</html>

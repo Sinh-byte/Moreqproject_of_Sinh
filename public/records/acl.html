@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACL Management</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1300px;margin:0 auto;padding:16px}.tabs{display:flex;gap:8px;margin-bottom:10px}.tabs button{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}.tabs button.on{border-color:var(--ok);color:#a7f3d0}
+    .panel{display:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}.panel.on{display:block}
+    .roles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}@media(max-width:1000px){.roles{grid-template-columns:1fr 1fr}}
+    .card{border:1px solid var(--line);border-radius:10px;padding:10px;background:#0b1221}
+    table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--line);font-size:12px;text-align:left}th{color:var(--muted)}
+    select,input{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">User ACL Management</h2>
+    <div class="tabs">
+      <button class="on" data-t="roles">Vai trò</button>
+      <button data-t="users">Người dùng</button>
+      <button data-t="matrix">Ma trận phân quyền</button>
+    </div>
+
+    <section id="p-roles" class="panel on">
+      <div class="roles">
+        <div class="card"><strong>admin</strong><div>Toàn quyền</div></div>
+        <div class="card"><strong>director</strong><div>Phê duyệt disposal</div></div>
+        <div class="card"><strong>records_manager</strong><div>Quản trị records</div></div>
+        <div class="card"><strong>staff</strong><div>Tác nghiệp</div></div>
+        <div class="card"><strong>viewer</strong><div>Chỉ đọc</div></div>
+      </div>
+    </section>
+
+    <section id="p-users" class="panel">
+      <table>
+        <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Entities ACL</th></tr></thead>
+        <tbody id="tbUsers"></tbody>
+      </table>
+    </section>
+
+    <section id="p-matrix" class="panel">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="entityType"><option value="record">record</option><option value="aggregation">aggregation</option></select>
+        <input id="entityId" placeholder="entityId">
+        <button id="loadAclBtn">Tải ACL</button>
+      </div>
+      <table>
+        <thead><tr><th>User</th><th>Read</th><th>Read Download</th><th>Full Control</th><th>Action</th></tr></thead>
+        <tbody id="tbAcl"></tbody>
+      </table>
+    </section>
+  </div>
+  <script>
+  (function(){
+    const API='/api/records/acl';
+    let users=[]; let aclRows=[];
+    const h=(json)=>{const t=localStorage.getItem('token');const x=t?{Authorization:'Bearer '+t}:{ };if(json)x['Content-Type']='application/json';return x;};
+    const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    async function loadUsers(){
+      const r=await fetch(API+'/users',{headers:h(false)}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi users');
+      users=j; tbUsers.innerHTML=users.map(u=>`<tr><td>${esc(u.name||u.id)}</td><td>${esc(u.email)}</td><td>${esc(u.role_name)}</td><td>${u.entity_acl_count||0}</td></tr>`).join('');
+    }
+    async function loadAcl(){
+      if(!entityId.value.trim()) return alert('Nhập entityId');
+      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}`,{headers:h(false)}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi ACL');
+      aclRows=j; renderMatrix();
+    }
+    function permCell(userId, perm){
+      const row=aclRows.find(x=>x.user_id===userId);
+      const checked=row&&row.permission===perm?'checked':'';
+      return `<input type="radio" name="p-${userId}" value="${perm}" ${checked}>`;
+    }
+    function renderMatrix(){
+      tbAcl.innerHTML=users.map(u=>`<tr data-u="${u.id}">
+        <td>${esc(u.name||u.id)}</td>
+        <td>${permCell(u.id,'read')}</td>
+        <td>${permCell(u.id,'read_download')}</td>
+        <td>${permCell(u.id,'full_control')}</td>
+        <td><button data-revoke="${u.id}">Revoke</button></td>
+      </tr>`).join('');
+      tbAcl.querySelectorAll('input[type=radio]').forEach(i=>i.onchange=()=>grant(i.closest('tr').dataset.u,i.value));
+      tbAcl.querySelectorAll('button[data-revoke]').forEach(b=>b.onclick=()=>revoke(b.dataset.revoke));
+    }
+    async function grant(userId, permission){
+      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}`,{method:'POST',headers:h(true),body:JSON.stringify({userId,permission})});
+      const j=await r.json(); if(!r.ok) return alert(j.error||'Lỗi grant');
+      await loadAcl();
+    }
+    async function revoke(userId){
+      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}/${encodeURIComponent(userId)}`,{method:'DELETE',headers:h(false)});
+      const j=await r.json(); if(!r.ok) return alert(j.error||'Lỗi revoke');
+      await loadAcl();
+    }
+    loadAclBtn.onclick=async()=>{try{await loadAcl();}catch(e){alert(e.message||String(e));}};
+    document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+b.dataset.t).classList.add('on');});
+    (async()=>{try{await loadUsers();}catch(e){alert(e.message||String(e));}})();
+  })();
+  </script>
+</body>
+</html>

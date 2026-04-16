@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Disposal Workflow</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
+    .wrap{max-width:1280px;margin:0 auto;padding:16px}.layout{display:grid;grid-template-columns:420px 1fr;gap:14px}@media(max-width:980px){.layout{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+    .tabs{display:flex;gap:8px;margin-bottom:10px}.tabs button{background:#0b1221;color:var(--txt);border:1px solid var(--line);padding:7px 10px;border-radius:8px;cursor:pointer}.tabs button.on{border-color:var(--ok);color:#a7f3d0}
+    .item{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;cursor:pointer}.item.on{outline:1px solid var(--ok);background:rgba(16,185,129,.12)}
+    .dot{display:inline-block;width:9px;height:9px;border-radius:999px;margin-right:6px}.d-red{background:var(--danger)}.d-amber{background:var(--warn)}.d-green{background:var(--ok)}
+    .badge{border:1px solid var(--line);border-radius:999px;padding:1px 7px;font-size:11px}
+    .muted{color:var(--muted)} label{display:block;font-size:12px;color:var(--muted);margin:7px 0 4px} textarea{width:100%;min-height:90px;background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px}
+    .timeline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.step{padding:7px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:12px}.step.on{border-color:var(--ok);color:#a7f3d0}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{background:#0b1221;color:var(--txt);border:1px solid var(--line);padding:8px 10px;border-radius:8px;cursor:pointer}.actions button.primary{border-color:var(--ok);color:#a7f3d0}.actions button:disabled{opacity:.5;cursor:not-allowed}
+    .err{display:none;background:rgba(127,29,29,.3);border:1px solid #7f1d1d;color:#fecaca;padding:8px;border-radius:8px;margin-bottom:10px}
+    .sig{border:1px dashed var(--line);border-radius:8px;padding:8px;font-size:13px}
+    .countdown{padding:9px;border-radius:8px;border:1px solid var(--line);margin-bottom:10px}.countdown.over{border-color:var(--danger);background:rgba(239,68,68,.12)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 10px">Disposal Workflow</h2>
+    <div id="err" class="err"></div>
+    <div class="layout">
+      <section class="card">
+        <div class="tabs">
+          <button class="on" data-tab="pending">Chờ xử lý</button>
+          <button data-tab="overdue">Quá hạn</button>
+          <button data-tab="completed">Đã xong</button>
+        </div>
+        <div class="actions" style="margin-bottom:10px;">
+          <button id="runCheckBtn">Chạy check hôm nay</button>
+        </div>
+        <div id="list"></div>
+      </section>
+      <section class="card">
+        <div id="empty" class="muted">Chọn một workflow item để xử lý.</div>
+        <div id="detail" style="display:none">
+          <div id="countdown" class="countdown">—</div>
+          <div id="info" class="muted"></div>
+          <div class="timeline">
+            <div id="st1" class="step">Capture</div>
+            <div id="st2" class="step">Review</div>
+            <div id="st3" class="step">Approve</div>
+            <div id="st4" class="step">Completed</div>
+          </div>
+          <label>Phương án xử lý</label>
+          <label><input type="radio" name="action" value="destruction"> Phê duyệt hủy</label>
+          <label><input type="radio" name="action" value="extend"> Gia hạn</label>
+          <label><input type="radio" name="action" value="preservation"> Bảo quản vĩnh viễn</label>
+          <label>Ghi chú (bắt buộc)</label>
+          <textarea id="notes"></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0">
+            <div class="sig" id="sigProposer">Người đề xuất: chưa ký</div>
+            <div class="sig" id="sigApprover">Người phê duyệt: chờ</div>
+          </div>
+          <div class="actions">
+            <button id="btnPropose">Gửi đề xuất</button>
+            <button id="btnConfirm" class="primary" disabled>Xác nhận</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const API='/api/records/disposal';
+    const state={rows:[],tab:'pending',selected:null};
+    const h=(json)=>{const t=localStorage.getItem('token');const x=t?{Authorization:'Bearer '+t}:{ };if(json)x['Content-Type']='application/json';return x;};
+    const showErr=(m)=>{const e=document.getElementById('err');e.style.display='block';e.textContent=m||'Lỗi';};
+    const clearErr=()=>{const e=document.getElementById('err');e.style.display='none';e.textContent='';};
+    const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    function dotClass(group){ if(group==='overdue') return 'd-red'; if(group==='due_soon') return 'd-amber'; return 'd-green'; }
+
+    async function load(){
+      clearErr();
+      try{
+        const r=await fetch(API+'/queue',{headers:h(false)}); const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'Lỗi queue');
+        state.rows=Array.isArray(j)?j:[]; renderList();
+        if(state.selected){const found=state.rows.find(x=>x.id===state.selected.id); if(found) select(found.id);}
+      }catch(e){showErr(e.message||String(e));}
+    }
+    function rowsByTab(){
+      if(state.tab==='pending') return state.rows.filter(x=>x.status!=='completed'&&x.queue_group!=='overdue');
+      if(state.tab==='overdue') return state.rows.filter(x=>x.status!=='completed'&&x.queue_group==='overdue');
+      return state.rows.filter(x=>x.status==='completed');
+    }
+    function renderList(){
+      const list=document.getElementById('list'); list.innerHTML='';
+      const arr=rowsByTab();
+      if(!arr.length){list.innerHTML='<div class="muted">Không có item.</div>'; return;}
+      arr.forEach(w=>{
+        const d=document.createElement('div'); d.className='item'+(state.selected&&state.selected.id===w.id?' on':'');
+        d.innerHTML='<span class="dot '+dotClass(w.queue_group)+'"></span><strong>'+esc(w.record_title)+'</strong><br><span class="muted">'+esc(w.record_number||'')+'</span> <span class="badge">'+esc(w.disposal_schedule_code||'N/A')+'</span> <span class="badge">'+esc(w.status)+'</span>';
+        d.onclick=()=>select(w.id); list.appendChild(d);
+      });
+    }
+    function syncConfirmEnable(){
+      const action=document.querySelector('input[name="action"]:checked');
+      const notes=document.getElementById('notes').value.trim();
+      document.getElementById('btnConfirm').disabled=!(action&&notes);
+    }
+    function markTimeline(w){
+      [st1,st2,st3,st4].forEach(x=>x.classList.remove('on'));
+      st1.classList.add('on');
+      if(w.status==='pending'||w.status==='overdue') st2.classList.add('on');
+      if(w.proposed_at) st3.classList.add('on');
+      if(w.status==='completed') st4.classList.add('on');
+    }
+    function select(id){
+      state.selected=state.rows.find(x=>x.id===id)||null; renderList();
+      document.getElementById('empty').style.display=state.selected?'none':'block';
+      document.getElementById('detail').style.display=state.selected?'block':'none';
+      if(!state.selected) return;
+      const w=state.selected;
+      const cd=document.getElementById('countdown');
+      const over=typeof w.days_overdue==='number'&&w.days_overdue>0;
+      cd.className='countdown'+(over?' over':'');
+      cd.textContent=over?`Quá hạn ${w.days_overdue} ngày`:`Deadline: ${w.deadline}`;
+      document.getElementById('info').innerHTML=
+        'Classification: <strong>'+esc(w.classification_id||'N/A')+'</strong><br>'+
+        'DS: <strong>'+esc(w.disposal_schedule_code||'N/A')+'</strong><br>'+
+        'Trigger date: <strong>'+esc(w.trigger_date||'N/A')+'</strong><br>'+
+        'Components: <strong>'+esc(w.components_count||0)+'</strong>';
+      document.getElementById('sigProposer').textContent='Người đề xuất: '+(w.proposed_by_name||w.proposed_by||'chưa ký');
+      document.getElementById('sigApprover').textContent='Người phê duyệt: '+(w.approved_by_name||w.approved_by||'chờ');
+      document.querySelectorAll('input[name="action"]').forEach(r=>{r.checked=(w.proposed_action&&r.value===w.proposed_action);});
+      document.getElementById('notes').value=w.proposal_notes||'';
+      markTimeline(w); syncConfirmEnable();
+    }
+    async function propose(){
+      if(!state.selected) return;
+      clearErr();
+      try{
+        const action=document.querySelector('input[name="action"]:checked'); const notes=document.getElementById('notes').value.trim();
+        if(!action||!notes){showErr('Chọn action và nhập ghi chú');return;}
+        const r=await fetch(API+'/'+encodeURIComponent(state.selected.id)+'/propose',{method:'POST',headers:h(true),body:JSON.stringify({proposedAction:action.value,proposalNotes:notes})});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi propose');
+        await load(); select(j.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function confirmApprove(){
+      if(!state.selected) return;
+      clearErr();
+      try{
+        const action=document.querySelector('input[name="action"]:checked'); const notes=document.getElementById('notes').value.trim();
+        if(!action||!notes){showErr('Chọn action và nhập ghi chú');return;}
+        const r=await fetch(API+'/'+encodeURIComponent(state.selected.id)+'/approve',{method:'POST',headers:h(true),body:JSON.stringify({approvedAction:action.value,approvalNotes:notes})});
+        const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi approve');
+        await load(); if(j.workflow) select(j.workflow.id);
+      }catch(e){showErr(e.message||String(e))}
+    }
+    async function runCheck(){
+      clearErr();
+      try{
+        const r=await fetch(API+'/run-check',{method:'POST',headers:h(true)}); const j=await r.json();
+        if(!r.ok) throw new Error(j.error||'Lỗi run-check');
+        alert('Đã trigger '+(j.triggered||0)+' record.');
+        await load();
+      }catch(e){showErr(e.message||String(e))}
+    }
+    document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');state.tab=b.dataset.tab;renderList();});
+    document.querySelectorAll('input[name="action"]').forEach(r=>r.onchange=syncConfirmEnable);
+    document.getElementById('notes').addEventListener('input',syncConfirmEnable);
+    document.getElementById('btnPropose').onclick=propose;
+    document.getElementById('btnConfirm').onclick=confirmApprove;
+    document.getElementById('runCheckBtn').onclick=runCheck;
+    load();
+  })();
+  </script>
+</body>
+</html>
