@@ -6,111 +6,147 @@
   <title>Record Detail - MoReq2010</title>
   <style>
     :root {
-      --navy: #0f172a; --panel: #17223a; --border: #2d3a53; --emerald: #10b981; --muted: #93a4bf;
+      --bg: #0f172a;
+      --panel: #17223a;
+      --line: #2d3a53;
+      --txt: #e5edf9;
+      --muted: #9fb2cd;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --review: #3b82f6;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--navy); color: #e5edf9; font-family: system-ui, sans-serif; }
-    .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
-    .breadcrumb { color: #9fb2cd; font-size: 13px; margin-bottom: 10px; }
-    .layout { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
-    @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
-    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
-    .tab-btn {
-      border: 1px solid var(--border); background: #111b2f; color: #e5edf9; border-radius: 8px; padding: 7px 10px; cursor: pointer;
+    body { margin: 0; background: var(--bg); color: var(--txt); font-family: system-ui, sans-serif; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 16px; }
+    .err { display:none; margin-bottom:10px; border:1px solid #7f1d1d; background:rgba(127,29,29,.3); color:#fecaca; padding:9px 10px; border-radius:8px; }
+    .confidential-banner { display:none; margin-bottom:10px; border:1px solid #7c2d12; background: rgba(245, 158, 11, .2); color:#fde68a; padding:10px; border-radius:8px; }
+    .top { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; margin-bottom:12px; }
+    .title-wrap h2 { margin:0 0 4px; }
+    .breadcrumb { color: var(--muted); font-size: 13px; }
+    .status-badge { padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid var(--line); text-transform:uppercase; letter-spacing:.03em; }
+    .st-active { background: rgba(16,185,129,.18); color:#a7f3d0; border-color: #10b981; }
+    .st-disposed { background: rgba(239,68,68,.18); color:#fecaca; border-color: #ef4444; }
+    .st-frozen { background: rgba(245,158,11,.18); color:#fde68a; border-color: #f59e0b; }
+    .st-review { background: rgba(59,130,246,.18); color:#bfdbfe; border-color: #3b82f6; }
+    .st-default { background: rgba(148,163,184,.14); color:#cbd5e1; border-color:#64748b; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+    button, .btn-link {
+      border: 1px solid var(--line); background:#111b2f; color:var(--txt); border-radius:8px; padding:8px 12px; cursor:pointer; text-decoration:none; font-size:13px;
     }
-    .tab-btn.on { border-color: var(--emerald); color: #a7f3d0; }
-    .tab { display: none; } .tab.on { display: block; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
-    label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-    input, textarea {
-      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #0e1628; color: #e5edf9;
-    }
-    textarea { min-height: 100px; resize: vertical; }
-    .row { margin-bottom: 10px; }
-    button {
-      border: 1px solid var(--border); background: #111b2f; color: #e5edf9; border-radius: 8px; padding: 8px 12px; cursor: pointer;
-    }
-    button.primary { border-color: var(--emerald); background: rgba(16,185,129,0.2); color: #a7f3d0; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .chip { border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; font-size: 12px; display: inline-block; margin: 2px 4px 2px 0; }
-    .timeline { border-left: 2px solid var(--border); padding-left: 10px; margin-top: 8px; }
-    .ev { margin-bottom: 10px; font-size: 12px; }
-    .muted { color: var(--muted); }
-    .progress { height: 10px; border-radius: 999px; background: #0e1628; border: 1px solid var(--border); overflow: hidden; }
-    .progress > span { display: block; height: 100%; background: linear-gradient(90deg, #10b981, #34d399); width: 0; }
-    .err { display: none; margin-bottom: 10px; border: 1px solid #7f1d1d; background: rgba(127,29,29,.3); color: #fecaca; padding: 9px 10px; border-radius: 8px; }
-    a { color: #9be8cc; }
+    button.primary { border-color:var(--ok); color:#a7f3d0; background: rgba(16,185,129,.16); }
+    button.warn { border-color:var(--warn); color:#fde68a; background: rgba(245,158,11,.15); }
+    button.danger { border-color:var(--danger); color:#fecaca; background: rgba(239,68,68,.15); }
+    .main-grid { display:grid; grid-template-columns: 1.15fr .85fr; gap:14px; }
+    @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+    .panel h3 { margin:0 0 10px; font-size:15px; }
+    .meta-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    @media (max-width: 760px) { .meta-grid { grid-template-columns: 1fr; } }
+    label { display:block; color:var(--muted); font-size:12px; margin-bottom:4px; }
+    input, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#0e1628; color:var(--txt); }
+    textarea { min-height:95px; resize:vertical; }
+    .row { margin-bottom:10px; }
+    .chip { border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; display:inline-block; margin:2px 4px 2px 0; }
+    .preview-box { min-height:480px; border:1px solid var(--line); border-radius:10px; background:#0d1526; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+    .preview-box iframe, .preview-box img { width:100%; height:480px; border:0; object-fit:contain; background:#fff; }
+    .preview-placeholder { color:var(--muted); font-size:14px; padding:10px; text-align:center; }
+    .components { margin-top:10px; max-height:220px; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+    .comp { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .tabs { display:flex; gap:8px; margin:14px 0 10px; flex-wrap:wrap; }
+    .tab-btn { border:1px solid var(--line); background:#111b2f; color:var(--txt); border-radius:8px; padding:7px 10px; cursor:pointer; }
+    .tab-btn.on { border-color:var(--ok); color:#a7f3d0; }
+    .tab { display:none; }
+    .tab.on { display:block; }
+    .timeline { border-left:2px solid var(--line); padding-left:10px; }
+    .ev { margin-bottom:10px; font-size:12px; }
+    .muted { color:var(--muted); }
+    .ret { height:10px; border-radius:999px; background:#0e1628; border:1px solid var(--line); overflow:hidden; }
+    .ret > span { display:block; height:100%; background:linear-gradient(90deg, #10b981, #34d399); width:0; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div id="err" class="err"></div>
-    <div id="breadcrumb" class="breadcrumb">Tài liệu › ...</div>
-    <h2 id="title" style="margin:0 0 12px;">Record Detail</h2>
+    <div id="confidentialBanner" class="confidential-banner"></div>
 
-    <div class="layout">
-      <main class="panel">
-        <div class="tabs">
-          <button class="tab-btn on" data-tab="info">Thông tin Record</button>
-          <button class="tab-btn" data-tab="components">Components</button>
-          <button class="tab-btn" data-tab="aggregation">Aggregation</button>
-        </div>
-
-        <section class="tab on" id="tab-info">
-          <div class="grid">
-            <div class="row"><label>Record number</label><input id="recordNumber" disabled /></div>
-            <div class="row"><label>Số hiệu văn bản</label><input id="docRef" disabled /></div>
-            <div class="row"><label>Tiêu đề</label><input id="recordTitle" disabled /></div>
-            <div class="row"><label>Loại văn bản</label><input id="docType" disabled /></div>
-            <div class="row"><label>Ngày ban hành</label><input id="issueDate" disabled /></div>
-            <div class="row"><label>Người soạn</label><input id="author" disabled /></div>
-            <div class="row"><label>Người phê duyệt (sửa được)</label><input id="approver" /></div>
-            <div class="row"><label>Đơn vị ban hành</label><input id="issuingUnit" disabled /></div>
-          </div>
-          <div class="row"><label>Mô tả (sửa được)</label><textarea id="description"></textarea></div>
-          <div class="row"><label>Từ khóa (sửa được)</label><input id="keywords" /></div>
-          <div class="row"><label>Ghi chú (notes - sửa được)</label><textarea id="notes"></textarea></div>
-          <div class="row">
-            <label>Tags (sửa được)</label>
-            <div id="tagsBox"></div>
-          </div>
-          <button id="saveBtn" class="primary">Lưu</button>
-        </section>
-
-        <section class="tab" id="tab-components">
-          <div id="componentsList"></div>
-          <div class="muted" style="margin-top:10px;">Thêm component đang để placeholder API. Xóa chỉ cho record chưa frozen.</div>
-        </section>
-
-        <section class="tab" id="tab-aggregation">
-          <div id="aggInfo" class="muted">Không có aggregation.</div>
-        </section>
-      </main>
-
-      <aside class="panel">
-        <h3 style="margin:0 0 8px;">Disposal Schedule</h3>
-        <div id="dsInfo" class="muted">—</div>
-        <div style="margin:8px 0 4px;" class="muted">Retention progress</div>
-        <div class="progress"><span id="retentionBar"></span></div>
-        <div id="retentionLabel" class="muted" style="font-size:12px; margin-top:4px;">—</div>
-
-        <h3 style="margin:16px 0 8px;">ACL</h3>
-        <div id="aclInfo" class="muted">—</div>
-
-        <h3 style="margin:16px 0 8px;">Event History</h3>
-        <div id="eventTimeline" class="timeline"></div>
-        <a href="#" id="viewAllEvents">Xem tất cả</a>
-      </aside>
+    <div class="top">
+      <div class="title-wrap">
+        <div id="breadcrumb" class="breadcrumb">Tài liệu › ...</div>
+        <h2 id="title">Record Detail</h2>
+      </div>
+      <div id="statusBadge" class="status-badge st-default">UNKNOWN</div>
     </div>
+
+    <div class="actions">
+      <a id="btnDownload" class="btn-link" href="#" target="_blank" rel="noopener">Tải xuống</a>
+      <button id="btnEditMeta" class="primary">Chỉnh sửa metadata</button>
+      <button id="btnFreeze" class="warn">Đóng băng (Freeze)</button>
+      <button id="btnRequestDisposal" class="danger">Yêu cầu tiêu hủy</button>
+      <button id="btnSaveMeta" class="primary" style="display:none;">Lưu metadata</button>
+    </div>
+
+    <div class="main-grid">
+      <section class="panel">
+        <h3>Metadata chi tiết</h3>
+        <div class="meta-grid">
+          <div class="row"><label>Record number</label><input id="recordNumber" disabled /></div>
+          <div class="row"><label>Số hiệu văn bản</label><input id="docRef" disabled /></div>
+          <div class="row"><label>Tiêu đề</label><input id="recordTitle" disabled /></div>
+          <div class="row"><label>Loại văn bản</label><input id="docType" disabled /></div>
+          <div class="row"><label>Ngày ban hành</label><input id="issueDate" disabled /></div>
+          <div class="row"><label>Người soạn</label><input id="author" disabled /></div>
+          <div class="row"><label>Người phê duyệt</label><input id="approver" data-editable="1" disabled /></div>
+          <div class="row"><label>Đơn vị ban hành</label><input id="issuingUnit" disabled /></div>
+        </div>
+        <div class="row"><label>Mô tả</label><textarea id="description" data-editable="1" disabled></textarea></div>
+        <div class="row"><label>Từ khóa</label><input id="keywords" data-editable="1" disabled /></div>
+        <div class="row"><label>Ghi chú</label><textarea id="notes" data-editable="1" disabled></textarea></div>
+        <div class="row"><label>Tags</label><div id="tagsBox"></div></div>
+
+        <div class="row">
+          <label>Disposal Schedule</label>
+          <div id="dsInfo" class="muted">—</div>
+          <div class="ret" style="margin-top:8px;"><span id="retentionBar"></span></div>
+          <div id="retentionLabel" class="muted" style="font-size:12px; margin-top:4px;">—</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>File Preview</h3>
+        <div id="previewBox" class="preview-box">
+          <div class="preview-placeholder">Không có file để xem trước.</div>
+        </div>
+        <div class="components" id="componentsList"></div>
+      </section>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn on" data-tab="audit">Audit Trail</button>
+      <button class="tab-btn" data-tab="acl">ACL</button>
+      <button class="tab-btn" data-tab="aggregation">Aggregation</button>
+    </div>
+
+    <section class="panel tab on" id="tab-audit">
+      <h3>Event History</h3>
+      <div id="eventTimeline" class="timeline"></div>
+    </section>
+    <section class="panel tab" id="tab-acl">
+      <h3>ACL</h3>
+      <div id="aclInfo" class="muted">—</div>
+    </section>
+    <section class="panel tab" id="tab-aggregation">
+      <h3>Aggregation</h3>
+      <div id="aggInfo" class="muted">—</div>
+    </section>
   </div>
 
+  <script src="/js/ui-utils.js"></script>
   <script>
     (function () {
       const id = new URLSearchParams(location.search).get('id');
       const API = '/api/records/' + encodeURIComponent(id || '');
-      const state = { record: null, tags: [], allTags: [] };
+      const state = { record: null, tags: [], allTags: [], editMode: false };
 
       function authHeaders(isJson) {
         const token = localStorage.getItem('token');
@@ -132,6 +168,23 @@
         return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       }
 
+      function statusBadgeClass(record) {
+        if (record && record.is_frozen === 1) return 'st-frozen';
+        if (record && record.state === 'active') return 'st-active';
+        if (record && record.state === 'disposed') return 'st-disposed';
+        if (record && record.state === 'review') return 'st-review';
+        return 'st-default';
+      }
+
+      function setEditMode(on) {
+        state.editMode = !!on;
+        document.querySelectorAll('[data-editable="1"]').forEach(function (el) {
+          el.disabled = !on;
+        });
+        document.getElementById('btnSaveMeta').style.display = on ? 'inline-block' : 'none';
+        document.getElementById('btnEditMeta').textContent = on ? 'Hủy chỉnh sửa' : 'Chỉnh sửa metadata';
+      }
+
       async function loadTags() {
         const res = await fetch('/api/records/capture/tags', { headers: authHeaders(false) });
         const data = await res.json();
@@ -149,14 +202,26 @@
           if (!res.ok) throw new Error(data.error || 'Không tải được record');
           state.record = data;
           state.tags = (data.tags || []).map(function (t) { return t.id; });
+          setEditMode(false);
           render();
         } catch (e) {
           showError(e.message || String(e));
         }
       }
 
+      function renderStatus() {
+        const b = document.getElementById('statusBadge');
+        const r = state.record || {};
+        let text = (r.state || 'unknown').toUpperCase();
+        if (r.is_frozen === 1) text += ' / FROZEN';
+        b.className = 'status-badge ' + statusBadgeClass(r);
+        b.textContent = text;
+      }
+
       function render() {
         const r = state.record;
+        renderConfidentialWarning();
+        renderStatus();
         document.getElementById('title').textContent = r.title || 'Record';
         document.getElementById('recordNumber').value = r.record_number || '';
         document.getElementById('docRef').value = r.doc_ref || '';
@@ -175,16 +240,12 @@
 
         renderTags();
         renderComponents();
+        renderPreview();
         renderAcl();
         renderEvents();
         renderAggregation();
         renderDisposalBox();
-
-        const frozen = r.is_frozen === 1;
-        document.getElementById('saveBtn').disabled = false;
-        if (frozen) {
-          // allowed fields vẫn có thể sửa, chỉ khóa core fields đã disabled sẵn
-        }
+        renderActionsState();
       }
 
       function renderTags() {
@@ -196,6 +257,7 @@
           const c = document.createElement('input');
           c.type = 'checkbox';
           c.checked = state.tags.indexOf(t.id) >= 0;
+          c.disabled = !state.editMode;
           c.onchange = function () {
             if (c.checked) {
               if (state.tags.indexOf(t.id) < 0) state.tags.push(t.id);
@@ -214,28 +276,69 @@
         const components = state.record.components || [];
         if (!components.length) {
           box.innerHTML = '<div class="muted">Không có component.</div>';
+          document.getElementById('btnDownload').removeAttribute('href');
           return;
         }
-        const frozen = state.record.is_frozen === 1;
+        const firstDownloadable = components.find(function (c) { return c.stored_filename && !c.is_redacted; });
+        if (firstDownloadable) {
+          document.getElementById('btnDownload').href = '/uploads/records/' + encodeURIComponent(firstDownloadable.stored_filename).replace(/%2F/g, '/');
+        } else {
+          document.getElementById('btnDownload').removeAttribute('href');
+        }
         box.innerHTML = components.map(function (c) {
           return (
-            '<div style="border-bottom:1px solid var(--border); padding:8px 0;">' +
+            '<div class="comp">' +
             '<strong>' + esc(c.filename) + '</strong>' +
             (c.is_primary === 1 ? ' <span class="chip">Chính</span>' : '') +
-            '<div class="muted" style="font-size:12px;">' + esc(c.mime_type) + ' · ' + esc(c.file_size) + ' bytes</div>' +
-            '<div style="margin-top:6px;">' +
-            '<a href="/uploads/records/' + encodeURIComponent(c.stored_filename).replace(/%2F/g, '/') + '" target="_blank">Download</a>' +
-            (frozen ? '' : ' · <a href="#" data-del="' + esc(c.id) + '">Xóa</a>') +
-            '</div></div>'
+            '<div class="muted">' + esc(c.mime_type) + ' · ' + esc(c.file_size) + ' bytes</div>' +
+            '<div class="muted">SHA256: ' + esc(c.sha256_hash || '—') + '</div>' +
+            '</div>'
           );
         }).join('');
+      }
+
+      function renderPreview() {
+        const box = document.getElementById('previewBox');
+        const components = state.record.components || [];
+        const primary = components.find(function (c) { return c.is_primary === 1; }) || components[0];
+        if (!primary || !primary.stored_filename || primary.is_redacted) {
+          box.innerHTML = '<div class="preview-placeholder">Nội dung file không khả dụng hoặc đã được redacted.</div>';
+          return;
+        }
+        const url = '/uploads/records/' + encodeURIComponent(primary.stored_filename).replace(/%2F/g, '/');
+        const mt = String(primary.mime_type || '').toLowerCase();
+        if (mt === 'application/pdf') {
+          box.innerHTML = '<iframe src="' + url + '#view=FitH"></iframe>';
+          return;
+        }
+        if (mt.startsWith('image/')) {
+          box.innerHTML = '<img src="' + url + '" alt="preview" />';
+          return;
+        }
+        box.innerHTML = '<div class="preview-placeholder">Không hỗ trợ preview định dạng này. Vui lòng tải xuống để xem.</div>';
+      }
+
+      function renderConfidentialWarning() {
+        const banner = document.getElementById('confidentialBanner');
+        const c = state.record && state.record.confidentiality ? state.record.confidentiality : null;
+        if (!c || !c.is_confidential) {
+          banner.style.display = 'none';
+          banner.textContent = '';
+          return;
+        }
+        banner.style.display = 'block';
+        if (c.redacted) {
+          banner.textContent = 'Hồ sơ đang ở chế độ bảo mật. Tài khoản hiện tại chỉ xem được metadata cơ bản; nội dung file đã được che.';
+        } else {
+          banner.textContent = 'Hồ sơ đang ở chế độ bảo mật. Bạn có quyền view_confidential và được phép xem nội dung file.';
+        }
       }
 
       function renderAcl() {
         const acl = state.record.acl || [];
         document.getElementById('aclInfo').innerHTML = acl.length
           ? acl.map(function (a) {
-              return '<div style="margin-bottom:6px;"><strong>' + esc(a.user_name || a.user_id) + '</strong> - ' + esc(a.permission) + '</div>';
+              return '<div style="margin-bottom:6px;"><strong>' + esc(a.user_name || a.principal_id || a.user_id) + '</strong> - ' + esc(a.permission) + '</div>';
             }).join('')
           : '<span class="muted">Chưa có ACL riêng.</span>';
       }
@@ -282,9 +385,16 @@
         document.getElementById('retentionLabel').textContent = pct + '% · còn ' + days + ' ngày';
       }
 
+      function renderActionsState() {
+        const frozen = state.record && state.record.is_frozen === 1;
+        document.getElementById('btnFreeze').disabled = frozen;
+        document.getElementById('btnEditMeta').disabled = false;
+        document.getElementById('btnRequestDisposal').disabled = false;
+      }
+
       async function savePatch() {
         clearError();
-        const btn = document.getElementById('saveBtn');
+        const btn = document.getElementById('btnSaveMeta');
         btn.disabled = true;
         try {
           const body = {
@@ -302,13 +412,36 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Lưu thất bại');
           state.record = Object.assign({}, state.record, data);
-          alert('Đã cập nhật metadata');
+          setEditMode(false);
           render();
+          UIToast.success('Đã cập nhật metadata');
         } catch (e) {
           showError(e.message || String(e));
         } finally {
           btn.disabled = false;
         }
+      }
+
+      async function requestDisposal() {
+        try {
+          const res = await fetch('/api/records/bulk/disposal-review', {
+            method: 'POST',
+            headers: authHeaders(true),
+            body: JSON.stringify({ recordIds: [id] }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Không thể gửi yêu cầu tiêu hủy');
+          const queued = (data.queued || []).length;
+          const skipped = (data.skipped || []).length;
+          UIToast.success('Đã gửi yêu cầu tiêu hủy. Queued: ' + queued + ', skipped: ' + skipped);
+          loadRecord();
+        } catch (e) {
+          showError(e.message || String(e));
+        }
+      }
+
+      function freezeRecordFallback() {
+        UIToast.warn('Hiện chưa có endpoint Freeze chuyên biệt. Bạn có thể quản lý trạng thái qua quy trình tiêu hủy/duyệt hoặc bổ sung API freeze.');
       }
 
       document.querySelectorAll('.tab-btn').forEach(function (btn) {
@@ -321,10 +454,18 @@
         });
       });
 
-      document.getElementById('saveBtn').addEventListener('click', savePatch);
-      document.getElementById('viewAllEvents').addEventListener('click', function (e) {
-        e.preventDefault();
-        alert('Chức năng xem tất cả event sẽ mở trong trang riêng.');
+      document.getElementById('btnEditMeta').addEventListener('click', function () {
+        setEditMode(!state.editMode);
+        if (state.editMode) renderTags();
+      });
+      document.getElementById('btnSaveMeta').addEventListener('click', savePatch);
+      document.getElementById('btnRequestDisposal').addEventListener('click', requestDisposal);
+      document.getElementById('btnFreeze').addEventListener('click', freezeRecordFallback);
+      document.getElementById('btnDownload').addEventListener('click', function (e) {
+        if (!this.getAttribute('href')) {
+          e.preventDefault();
+          showError('Không có file khả dụng để tải xuống.');
+        }
       });
 
       loadRecord();

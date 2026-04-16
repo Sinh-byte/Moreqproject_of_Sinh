@@ -66,6 +66,7 @@
       </section>
     </div>
   </div>
+  <script src="/js/ui-utils.js"></script>
   <script>
   (function(){
     const API='/api/records/disposal';
@@ -160,7 +161,7 @@
       try{
         const r=await fetch(API+'/run-check',{method:'POST',headers:h(true)}); const j=await r.json();
         if(!r.ok) throw new Error(j.error||'Lỗi run-check');
-        alert('Đã trigger '+(j.triggered||0)+' record.');
+        UIToast.success('Đã trigger '+(j.triggered||0)+' record.');
         await load();
       }catch(e){showErr(e.message||String(e))}
     }

@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const crypto = require('crypto');
 
 function buildWhere(query) {
   const where = [];
@@ -126,6 +127,67 @@ function createRecordsAuditRouter(db, requireAuth) {
       });
     } catch (e) {
       return res.status(500).json({ error: e.message || 'Lỗi audit stats' });
+    }
+  });
+
+  router.get('/verify', (req, res) => {
+    try {
+      const role = req.user && req.user.role ? String(req.user.role).toLowerCase() : '';
+      const isAdmin = role === 'admin' || role === 'director';
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Chỉ admin/director được verify audit chain' });
+      }
+      const rows = db.prepare(`
+        SELECT id, event_hash, prev_event_hash, occurred_at
+        FROM rm_event_history
+        ORDER BY occurred_at ASC, id ASC
+      `).all();
+      let ok = true;
+      const failures = [];
+      const seenHashes = new Set();
+      let previousHash = null;
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const idx = i + 1;
+        const expectedPrev = previousHash;
+        const currentHash = String(row.event_hash || '');
+        if (!/^[a-f0-9]{64}$/.test(currentHash)) {
+          ok = false;
+          failures.push({ index: idx, id: row.id, reason: 'invalid_hash_format', hash: currentHash });
+        }
+        if (seenHashes.has(currentHash)) {
+          ok = false;
+          failures.push({ index: idx, id: row.id, reason: 'duplicate_hash', hash: currentHash });
+        }
+        seenHashes.add(currentHash);
+        if (row.prev_event_hash !== expectedPrev) {
+          ok = false;
+          failures.push({
+            index: idx,
+            id: row.id,
+            reason: 'prev_hash_mismatch',
+            expected_prev_event_hash: expectedPrev,
+            actual_prev_event_hash: row.prev_event_hash,
+          });
+        }
+        previousHash = currentHash || null;
+      }
+      // Fingerprint toàn bộ chuỗi để có bằng chứng snapshot lúc verify
+      const snapshotFingerprint = crypto
+        .createHash('sha256')
+        .update(rows.map((x) => `${x.id}|${x.prev_event_hash || ''}|${x.event_hash || ''}|${x.occurred_at || ''}`).join('\n'))
+        .digest('hex');
+      return res.json({
+        ok,
+        checked: rows.length,
+        failures,
+        first_event_id: rows[0] ? rows[0].id : null,
+        last_event_id: rows.length ? rows[rows.length - 1].id : null,
+        chain_snapshot_fingerprint: snapshotFingerprint,
+        verified_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi verify audit chain' });
     }
   });
 

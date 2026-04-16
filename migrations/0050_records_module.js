@@ -666,6 +666,29 @@ function appendEvent(db, eventData) {
     throw new TypeError('appendEvent: eventData phải là object');
   }
 
+  const enrichedEvent = { ...eventData };
+  // Chuẩn hóa bằng chứng cho workflow tiêu hủy theo MoReq2010
+  if (enrichedEvent.event_type && String(enrichedEvent.event_type).startsWith('disposal')) {
+    const payloadObj = (enrichedEvent.payload && typeof enrichedEvent.payload === 'object')
+      ? { ...enrichedEvent.payload }
+      : {};
+    const afterWorkflow = enrichedEvent.after_state
+      && typeof enrichedEvent.after_state === 'object'
+      && enrichedEvent.after_state.workflow
+      ? enrichedEvent.after_state.workflow
+      : null;
+    if (!payloadObj.approved_by && afterWorkflow && afterWorkflow.approved_by) {
+      payloadObj.approved_by = afterWorkflow.approved_by;
+    }
+    if (!payloadObj.approved_at && afterWorkflow && afterWorkflow.approved_at) {
+      payloadObj.approved_at = afterWorkflow.approved_at;
+    }
+    if (!payloadObj.evidence_recorded_at) {
+      payloadObj.evidence_recorded_at = new Date().toISOString();
+    }
+    enrichedEvent.payload = payloadObj;
+  }
+
   const prevRow = db
     .prepare(
       `SELECT event_hash FROM rm_event_history ORDER BY occurred_at DESC, id DESC LIMIT 1`
@@ -673,7 +696,7 @@ function appendEvent(db, eventData) {
     .get();
 
   const prevChain = prevRow ? prevRow.event_hash : '';
-  const serialized = JSON.stringify(eventData);
+  const serialized = JSON.stringify(enrichedEvent);
   const event_hash = crypto
     .createHash('sha256')
     .update(prevChain + serialized)
@@ -698,20 +721,20 @@ function appendEvent(db, eventData) {
 
   stmt.run({
     id,
-    event_type: eventData.event_type,
-    entity_type: eventData.entity_type,
-    entity_id: eventData.entity_id,
-    entity_title: eventData.entity_title ?? null,
-    actor_id: eventData.actor_id ?? null,
-    actor_label: eventData.actor_label ?? null,
-    ip_address: eventData.ip_address ?? null,
-    session_id: eventData.session_id ?? null,
-    before_state: _toStoredText(eventData.before_state),
-    after_state: _toStoredText(eventData.after_state),
-    payload: _toStoredText(eventData.payload),
+    event_type: enrichedEvent.event_type,
+    entity_type: enrichedEvent.entity_type,
+    entity_id: enrichedEvent.entity_id,
+    entity_title: enrichedEvent.entity_title ?? null,
+    actor_id: enrichedEvent.actor_id ?? null,
+    actor_label: enrichedEvent.actor_label ?? null,
+    ip_address: enrichedEvent.ip_address ?? null,
+    session_id: enrichedEvent.session_id ?? null,
+    before_state: _toStoredText(enrichedEvent.before_state),
+    after_state: _toStoredText(enrichedEvent.after_state),
+    payload: _toStoredText(enrichedEvent.payload),
     event_hash,
     prev_event_hash,
-    occurred_at: eventData.occurred_at ?? null,
+    occurred_at: enrichedEvent.occurred_at ?? null,
   });
 
   return { id, event_hash, prev_event_hash };

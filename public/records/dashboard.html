@@ -1,95 +1,258 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Records Dashboard</title>
-  <style>
-    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
-    .wrap{max-width:1400px;margin:0 auto;padding:16px}.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}@media(max-width:1000px){.kpis{grid-template-columns:1fr 1fr}}
-    .kpi,.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}.layout{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:1000px){.layout{grid-template-columns:1fr}}
-    table{width:100%;border-collapse:collapse}th,td{padding:7px;border-bottom:1px solid var(--line);font-size:12px;text-align:left}th{color:var(--muted)}
-    .health{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.badge{border:1px solid var(--line);border-radius:999px;padding:1px 7px;font-size:11px}
-    .ok{color:#a7f3d0}.warn{color:#fde68a}.bad{color:#fecaca} button{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 style="margin:0 0 10px">Dashboard Analytics</h2>
-      <button id="refreshBtn">Refresh</button>
-    </div>
-    <div class="kpis">
-      <div class="kpi"><div>Total Records</div><strong id="kTotal">0</strong></div>
-      <div class="kpi"><div>Active</div><strong id="kActive">0</strong></div>
-      <div class="kpi"><div>Review</div><strong id="kReview">0</strong></div>
-      <div class="kpi"><div>Disposed</div><strong id="kDisposed">0</strong></div>
-      <div class="kpi"><div>Preserved</div><strong id="kPreserved">0</strong></div>
-    </div>
-    <div class="layout">
-      <section class="card">
-        <h3 style="margin:0 0 8px">Capture by Month (12m)</h3>
-        <canvas id="barCanvas" width="620" height="260"></canvas>
-      </section>
-      <section class="card">
-        <h3 style="margin:0 0 8px">DocType Donut</h3>
-        <svg id="donut" viewBox="0 0 260 260" width="260" height="260"></svg>
-        <div id="legend"></div>
-      </section>
-    </div>
-    <div class="layout" style="margin-top:10px">
-      <section class="card">
-        <h3 style="margin:0 0 8px">Disposal Timeline</h3>
-        <table><thead><tr><th>Record</th><th>Due</th><th>Days</th></tr></thead><tbody id="tbTimeline"></tbody></table>
-      </section>
-      <section class="card">
-        <h3 style="margin:0 0 8px">Activity by User</h3>
-        <table><thead><tr><th>Actor</th><th>Events</th></tr></thead><tbody id="tbActivity"></tbody></table>
-      </section>
-    </div>
-    <section class="card" style="margin-top:10px">
-      <h3 style="margin:0 0 8px">Health Metrics</h3>
-      <div class="health" id="healthGrid"></div>
-    </section>
-  </div>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/js/ui-utils.js"></script>
   <script>
-  (function(){
-    const API='/api/records/dashboard/stats';
-    const h=()=>{const t=localStorage.getItem('token');return t?{Authorization:'Bearer '+t}:{ }};
-    function statusClass(v){return v?'ok':'bad';}
-    function drawBar(data){
-      const c=barCanvas,ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle='#94a3b8'; ctx.font='11px sans-serif';
-      const max=Math.max(1,...data.map(x=>x.count||0)); const pad=30; const w=(c.width-pad*2)/Math.max(1,data.length); const h=c.height-pad*2;
-      data.forEach((d,i)=>{const bh=((d.count||0)/max)*h; const x=pad+i*w+4; const y=c.height-pad-bh; ctx.fillStyle='#10b981'; ctx.fillRect(x,y,w-8,bh); ctx.fillStyle='#94a3b8'; ctx.fillText((d.month||'').slice(5),x,c.height-10);});
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              900: '#0f172a',
+              800: '#1e293b',
+              700: '#334155',
+              600: '#475569',
+            },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="flex min-h-screen">
+    <aside class="hidden w-64 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:flex">
+      <div class="mb-6">
+        <h1 class="text-lg font-semibold">MoReq2010</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Records Compliance</p>
+      </div>
+      <nav class="space-y-2 text-sm">
+        <a href="/records/dashboard.html" class="block rounded-lg bg-blue-600 px-3 py-2 font-medium text-white">Dashboard</a>
+        <a href="/records/index.html" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Records</a>
+        <a href="/records/disposal.html" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Disposal</a>
+        <a href="/records/audit.html" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Audit Trail</a>
+      </nav>
+      <div class="mt-auto text-xs text-slate-500 dark:text-slate-400">
+        Compliance dashboard for monitoring record lifecycle.
+      </div>
+    </aside>
+
+    <main class="flex-1 p-4 sm:p-6">
+      <div class="mx-auto max-w-7xl">
+        <header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-2xl font-semibold">Dashboard</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Giám sát tình trạng hồ sơ và tuân thủ xử lý tiêu hủy</p>
+          </div>
+          <div class="flex gap-2">
+            <button id="themeBtn" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800">Dark Mode</button>
+            <button id="refreshBtn" class="rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">Refresh</button>
+          </div>
+        </header>
+
+        <section class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Tổng số Record</p>
+            <p id="kTotal" class="mt-2 text-3xl font-semibold">0</p>
+          </article>
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Active</p>
+            <p id="kActive" class="mt-2 text-3xl font-semibold text-emerald-500">0</p>
+          </article>
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Disposed</p>
+            <p id="kDisposed" class="mt-2 text-3xl font-semibold text-rose-500">0</p>
+          </article>
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Frozen</p>
+            <p id="kFrozen" class="mt-2 text-3xl font-semibold text-amber-500">0</p>
+          </article>
+        </section>
+
+        <section class="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h3 class="mb-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Tỷ lệ Record theo trạng thái</h3>
+            <div class="h-80"><canvas id="statusDoughnut"></canvas></div>
+          </article>
+          <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h3 class="mb-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Số lượng Record tạo theo tháng</h3>
+            <div class="h-80"><canvas id="createdByMonthBar"></canvas></div>
+          </article>
+        </section>
+
+        <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-600 dark:text-slate-300">Top 5 hồ sơ sắp đến hạn tiêu hủy trong 30 ngày tới</h3>
+            <a href="/records/disposal.html" class="text-xs text-blue-600 hover:underline dark:text-blue-400">Xem toàn bộ</a>
+          </div>
+          <div class="overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <tr>
+                  <th class="py-2 pr-3">Mã hồ sơ</th>
+                  <th class="py-2 pr-3">Tiêu đề</th>
+                  <th class="py-2 pr-3">Đến hạn</th>
+                  <th class="py-2 pr-3">Còn lại</th>
+                  <th class="py-2 text-right">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="tbAlerts" class="divide-y divide-slate-200 dark:divide-slate-800"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+  (function () {
+    const API = '/api/records/dashboard/stats';
+    const headers = () => {
+      const token = localStorage.getItem('token');
+      return token ? { Authorization: 'Bearer ' + token } : {};
+    };
+
+    let statusChart = null;
+    let monthChart = null;
+
+    function chartTheme() {
+      const dark = document.documentElement.classList.contains('dark');
+      return {
+        tick: dark ? '#cbd5e1' : '#334155',
+        grid: dark ? '#334155' : '#e2e8f0',
+        legend: dark ? '#cbd5e1' : '#334155',
+      };
     }
-    function polar(cx,cy,r,a){return {x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};}
-    function ringPath(cx,cy,r1,r2,a0,a1){
-      const p1=polar(cx,cy,r2,a0),p2=polar(cx,cy,r2,a1),p3=polar(cx,cy,r1,a1),p4=polar(cx,cy,r1,a0); const large=(a1-a0)>Math.PI?1:0;
-      return `M ${p1.x} ${p1.y} A ${r2} ${r2} 0 ${large} 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${r1} ${r1} 0 ${large} 0 ${p4.x} ${p4.y} Z`;
+
+    function renderStatusDoughnut(byState, frozen) {
+      const ctx = document.getElementById('statusDoughnut').getContext('2d');
+      const theme = chartTheme();
+      if (statusChart) statusChart.destroy();
+      statusChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Active', 'Disposed', 'Frozen', 'Review', 'Preserved', 'Draft'],
+          datasets: [{
+            data: [
+              byState.active || 0,
+              byState.disposed || 0,
+              frozen || 0,
+              byState.review || 0,
+              byState.preserved || 0,
+              byState.draft || 0,
+            ],
+            backgroundColor: ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6', '#14b8a6', '#f97316'],
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: theme.legend, boxWidth: 12 },
+            },
+          },
+        },
+      });
     }
-    function drawDonut(byDocType){
-      const colors=['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#22d3ee','#f97316','#84cc16']; const keys=Object.keys(byDocType||{}); const vals=keys.map(k=>byDocType[k]||0); const total=vals.reduce((a,b)=>a+b,0)||1;
-      let a=-Math.PI/2; donut.innerHTML=''; legend.innerHTML='';
-      keys.forEach((k,i)=>{const frac=(vals[i]/total); const a1=a+frac*Math.PI*2; const path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d',ringPath(130,130,60,110,a,a1)); path.setAttribute('fill',colors[i%colors.length]); donut.appendChild(path); a=a1; legend.innerHTML+=`<div><span class="badge" style="border-color:${colors[i%colors.length]}">${k}</span> ${vals[i]}</div>`;});
-      if(!keys.length){legend.textContent='Không có dữ liệu';}
+
+    function renderCreatedByMonth(rows) {
+      const ctx = document.getElementById('createdByMonthBar').getContext('2d');
+      const theme = chartTheme();
+      if (monthChart) monthChart.destroy();
+      monthChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: (rows || []).map((x) => x.month || ''),
+          datasets: [{
+            label: 'Created records',
+            data: (rows || []).map((x) => x.count || 0),
+            backgroundColor: '#2563eb',
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: theme.legend } } },
+          scales: {
+            x: { ticks: { color: theme.tick }, grid: { color: theme.grid } },
+            y: { ticks: { color: theme.tick, precision: 0 }, grid: { color: theme.grid } },
+          },
+        },
+      });
     }
-    async function load(){
-      const r=await fetch(API,{headers:h()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi dashboard');
-      kTotal.textContent=j.totalRecords||0; kActive.textContent=j.byState.active||0; kReview.textContent=j.byState.review||0; kDisposed.textContent=j.byState.disposed||0; kPreserved.textContent=j.byState.preserved||0;
-      drawBar(j.captureByMonth||[]); drawDonut(j.byDocType||{});
-      tbTimeline.innerHTML=(j.disposalTimeline||[]).map(x=>{const cls=(x.days_to_due<0)?'bad':(x.days_to_due<30?'warn':'ok');return `<tr><td>${x.record_number||x.id}</td><td>${x.retention_due_date||''}</td><td class="${cls}">${x.days_to_due}</td></tr>`;}).join('');
-      tbActivity.innerHTML=(j.activityByUser||[]).map(x=>`<tr><td>${x.actor}</td><td>${x.count}</td></tr>`).join('');
-      const hm=j.healthMetrics||{};
-      healthGrid.innerHTML=`<div class="${statusClass(hm.hasClassification)}">Has Classification: ${hm.hasClassification}</div>
-      <div class="${statusClass(hm.hasDisposalSchedule)}">Has DS: ${hm.hasDisposalSchedule}</div>
-      <div class="${statusClass(hm.hasComponent)}">Has Component: ${hm.hasComponent}</div>
-      <div class="${statusClass(hm.hasAgents)}">Has Users: ${hm.hasAgents}</div>
-      <div class="${statusClass(hm.hashIntegrity)}">Hash Integrity: ${hm.hashIntegrity}</div>`;
+
+    function renderAlerts(rows) {
+      const list = (Array.isArray(rows) ? rows : []).slice(0, 5);
+      const body = document.getElementById('tbAlerts');
+      if (!list.length) {
+        body.innerHTML = '<tr><td colspan="5" class="py-3 text-slate-500 dark:text-slate-400">Không có hồ sơ đến hạn trong 30 ngày tới.</td></tr>';
+        return;
+      }
+      body.innerHTML = list.map((r) => {
+        const d = Number(r.days_to_due);
+        const badge = Number.isNaN(d) ? '-' : `${d} ngày`;
+        const tone = d <= 7 ? 'text-rose-500' : (d <= 15 ? 'text-amber-500' : 'text-emerald-500');
+        return `<tr>
+          <td class="py-2 pr-3 font-medium">${r.record_number || r.id}</td>
+          <td class="py-2 pr-3">${String(r.title || '').replace(/</g, '&lt;')}</td>
+          <td class="py-2 pr-3">${r.retention_due_date || ''}</td>
+          <td class="py-2 pr-3 font-medium ${tone}">${badge}</td>
+          <td class="py-2 text-right">
+            <a class="rounded-md bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700" href="/records/disposal.html">Xử lý ngay</a>
+          </td>
+        </tr>`;
+      }).join('');
     }
-    refreshBtn.onclick=()=>load().catch(e=>alert(e.message||String(e)));
-    load().catch(e=>alert(e.message||String(e)));
-    setInterval(()=>load().catch(()=>{}),5*60*1000);
+
+    function setCards(total, byState, frozen) {
+      document.getElementById('kTotal').textContent = total || 0;
+      document.getElementById('kActive').textContent = byState.active || 0;
+      document.getElementById('kDisposed').textContent = byState.disposed || 0;
+      document.getElementById('kFrozen').textContent = frozen || 0;
+    }
+
+    async function load() {
+      const res = await fetch(API, { headers: headers() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Không tải được dashboard');
+      const byState = data.byState || {};
+      setCards(data.totalRecords || 0, byState, data.frozenRecords || 0);
+      renderStatusDoughnut(byState, data.frozenRecords || 0);
+      renderCreatedByMonth(data.captureByMonth || []);
+      renderAlerts(data.upcomingDisposals || []);
+    }
+
+    function applyTheme(isDark) {
+      document.documentElement.classList.toggle('dark', isDark);
+      localStorage.setItem('dashboard_theme', isDark ? 'dark' : 'light');
+      const btn = document.getElementById('themeBtn');
+      btn.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      load().catch((e) => UIToast.error(e.message || String(e)));
+    });
+
+    document.getElementById('themeBtn').addEventListener('click', () => {
+      const next = !document.documentElement.classList.contains('dark');
+      applyTheme(next);
+      load().catch(() => {});
+    });
+
+    const savedTheme = localStorage.getItem('dashboard_theme');
+    applyTheme(savedTheme ? savedTheme === 'dark' : true);
+    load().catch((e) => UIToast.error(e.message || String(e)));
+    setInterval(() => load().catch(() => {}), 5 * 60 * 1000);
   })();
   </script>
 </body>

@@ -369,6 +369,12 @@ function createRecordsCaptureRouter(db, requireAuth) {
       if (!f.storedName || !f.originalName || !f.mimeType || f.size == null || !f.sha256) {
         return res.status(400).json({ error: 'Thiếu trường trong uploadedFiles' });
       }
+      if (!Number.isFinite(Number(f.size)) || Number(f.size) <= 0) {
+        return res.status(400).json({ error: `Dung lượng component không hợp lệ: ${f.originalName}` });
+      }
+      if (!/^[a-f0-9]{64}$/i.test(String(f.sha256))) {
+        return res.status(400).json({ error: `SHA256 component không hợp lệ: ${f.originalName}` });
+      }
       let abs;
       try {
         abs = resolveStoredPath(f.storedName);
@@ -397,6 +403,9 @@ function createRecordsCaptureRouter(db, requireAuth) {
     const approver = body.approver ? String(body.approver).trim() : null;
     const description = body.description ? String(body.description).trim() : null;
     const keywords = body.keywords ? String(body.keywords).trim() : null;
+    const isConfidential = body.isConfidential === true || body.isConfidential === 1 || body.isConfidential === '1'
+      ? 1
+      : 0;
 
     const insRecord = db.prepare(`
       INSERT INTO rm_records (
@@ -404,13 +413,13 @@ function createRecordsCaptureRouter(db, requireAuth) {
         classification_id, aggregation_id, disposal_schedule_id,
         issue_date, effective_date, expiry_date, trigger_date, retention_due_date,
         author, approver, issuing_unit, captured_by, capture_date,
-        description, keywords, state, is_frozen, is_vital
+        description, keywords, state, is_frozen, is_vital, is_confidential
       ) VALUES (
         @id, @record_number, @doc_ref, @title, @doc_type,
         @classification_id, @aggregation_id, @disposal_schedule_id,
         @issue_date, @effective_date, @expiry_date, @trigger_date, @retention_due_date,
         @author, @approver, @issuing_unit, @captured_by, datetime('now'),
-        @description, @keywords, 'active', 1, 0
+        @description, @keywords, 'active', 1, 0, @is_confidential
       )
     `);
 
@@ -452,6 +461,7 @@ function createRecordsCaptureRouter(db, requireAuth) {
           captured_by: userId,
           description,
           keywords,
+          is_confidential: isConfidential,
         });
 
         for (const f of uploadedFiles) {

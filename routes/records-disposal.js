@@ -1,8 +1,26 @@
 'use strict';
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { appendEvent } = require('../migrations/0050_records_module.js');
 const { runDisposalCheck } = require('../jobs/disposal-checker.js');
+
+const UPLOAD_ROOT = path.join(process.cwd(), 'uploads', 'records');
+
+function resolveStoredPath(storedName) {
+  if (!storedName || typeof storedName !== 'string' || storedName.includes('..')) {
+    throw new Error('Đường dẫn file không hợp lệ');
+  }
+  const normalized = path.normalize(storedName).replace(/^(\.\.(\/|\\|$))+/, '');
+  const base = path.resolve(UPLOAD_ROOT);
+  const full = path.resolve(base, normalized);
+  const rel = path.relative(base, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Đường dẫn file không nằm trong thư mục upload');
+  }
+  return full;
+}
 
 function parseExtendYears(value) {
   if (!value) return 0;
@@ -57,6 +75,7 @@ function createRecordsDisposalRouter(db, requireAuth) {
         const diffDays = Math.floor((deadline.getTime() - now.getTime()) / 86400000);
         let queue_group = 'pending';
         if (r.status === 'completed') queue_group = 'completed';
+        else if (r.status === 'on_hold') queue_group = 'on_hold';
         else if (diffDays < 0) queue_group = 'overdue';
         else if (diffDays <= 30) queue_group = 'due_soon';
         return { ...r, queue_group };
@@ -79,13 +98,15 @@ function createRecordsDisposalRouter(db, requireAuth) {
       const wf = db.prepare('SELECT * FROM rm_disposal_workflow WHERE id = ?').get(workflowId);
       if (!wf) return res.status(404).json({ error: 'Workflow không tồn tại' });
       if (wf.status === 'completed') return res.status(400).json({ error: 'Workflow đã hoàn tất' });
+      if (wf.status === 'on_hold') return res.status(409).json({ error: 'Workflow đang bị hold do record frozen' });
       const before = wf;
       db.prepare(`
         UPDATE rm_disposal_workflow
         SET proposed_action = @proposed_action,
             proposed_by = @proposed_by,
             proposed_at = datetime('now'),
-            proposal_notes = @proposal_notes
+            proposal_notes = @proposal_notes,
+            status = CASE WHEN status = 'on_hold' THEN status ELSE 'pending_review' END
         WHERE id = @id
       `).run({
         id: workflowId,
@@ -127,13 +148,22 @@ function createRecordsDisposalRouter(db, requireAuth) {
       if (wf.status === 'completed') return res.status(400).json({ error: 'Workflow đã completed' });
       const rec = db.prepare('SELECT * FROM rm_records WHERE id = ?').get(wf.record_id);
       if (!rec) return res.status(404).json({ error: 'Record của workflow không tồn tại' });
+      if (rec.is_frozen === 1 || wf.status === 'on_hold') {
+        return res.status(409).json({ error: 'Record đang frozen (Disposal Hold), không thể phê duyệt tiêu hủy' });
+      }
       const ds = rec.disposal_schedule_id
         ? db.prepare('SELECT * FROM rm_disposal_schedules WHERE id = ?').get(rec.disposal_schedule_id)
         : null;
 
       const before = { workflow: wf, record: rec };
+      const evidence = {
+        approved_by: req.user.id,
+        approved_at: new Date().toISOString(),
+        approved_action: approvedAction,
+      };
 
       const tx = db.transaction(() => {
+        const affectedFiles = [];
         db.prepare(`
           UPDATE rm_disposal_workflow
           SET status = 'completed',
@@ -151,15 +181,52 @@ function createRecordsDisposalRouter(db, requireAuth) {
         });
 
         if (approvedAction === 'destruction') {
+          const components = db
+            .prepare('SELECT id, stored_filename FROM rm_components WHERE record_id = ?')
+            .all(rec.id);
+          for (const component of components) {
+            if (!component.stored_filename) continue;
+            try {
+              const abs = resolveStoredPath(component.stored_filename);
+              if (fs.existsSync(abs)) fs.unlinkSync(abs);
+              affectedFiles.push(component.stored_filename);
+            } catch (_e) {
+              // ignore invalid path; still proceed with metadata cleanup
+            }
+          }
+          db.prepare('DELETE FROM rm_components WHERE record_id = ?').run(rec.id);
           db.prepare(`
             UPDATE rm_records
             SET state = 'disposed',
                 disposal_action_taken = 'destroyed',
                 disposal_confirmed_at = datetime('now'),
                 disposal_confirmed_by = @uid,
+                is_frozen = 1,
                 updated_at = datetime('now')
             WHERE id = @rid
           `).run({ rid: rec.id, uid: req.user.id });
+          appendEvent(db, {
+            event_type: 'disposal_destruction_evidence',
+            entity_type: 'record',
+            entity_id: rec.id,
+            entity_title: rec.title,
+            actor_id: req.user.id,
+            payload: {
+              ...evidence,
+              approval_notes: approvalNotes,
+              deleted_component_files: affectedFiles,
+              deleted_component_count: affectedFiles.length,
+            },
+          });
+          db.prepare(`
+            UPDATE rm_records
+            SET description = COALESCE(description, '') || CASE
+              WHEN description IS NULL OR description = '' THEN '[STUB] Nội dung vật lý đã bị tiêu hủy theo quy trình.'
+              ELSE '\n[STUB] Nội dung vật lý đã bị tiêu hủy theo quy trình.'
+            END,
+                updated_at = datetime('now')
+            WHERE id = @rid
+          `).run({ rid: rec.id });
         } else if (approvedAction === 'preservation') {
           db.prepare(`
             UPDATE rm_records
@@ -200,6 +267,10 @@ function createRecordsDisposalRouter(db, requireAuth) {
         actor_id: req.user.id,
         before_state: before,
         after_state: { workflow: afterWorkflow, record: afterRecord },
+        payload: {
+          ...evidence,
+          approval_notes: approvalNotes,
+        },
       });
       return res.json({ workflow: afterWorkflow, record: afterRecord });
     } catch (e) {

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Audit Trail</title>
   <style>
-    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b}
+    :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--muted:#94a3b8;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444}
     *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,sans-serif}
     .wrap{max-width:1400px;margin:0 auto;padding:16px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}@media(max-width:900px){.kpis{grid-template-columns:1fr 1fr}}
     .kpi,.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
@@ -13,6 +13,16 @@
     .toolbar{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:8px}.toolbar input,.toolbar select{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
     table{width:100%;border-collapse:collapse}th,td{font-size:12px;padding:7px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted)}
     tr:hover{background:#0b1221;cursor:pointer}.mono{font-family:ui-monospace,monospace}.muted{color:var(--muted)} pre{white-space:pre-wrap;background:#0b1221;padding:8px;border:1px solid var(--line);border-radius:8px}
+    .btn{background:#0b1221;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+    .ok{color:var(--ok)}.fail{color:var(--danger)}
+    .diff-wrap{display:grid;gap:6px}
+    .diff-item{border:1px solid var(--line);border-radius:8px;padding:8px;background:#0b1221}
+    .diff-item .path{font-family:ui-monospace,monospace;color:#cbd5e1}
+    .diff-type-added{border-left:4px solid var(--ok)}
+    .diff-type-removed{border-left:4px solid var(--danger)}
+    .diff-type-changed{border-left:4px solid var(--warn)}
+    .diff-old,.diff-new{font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap}
+    .diff-old{color:#fecaca}.diff-new{color:#a7f3d0}
   </style>
 </head>
 <body>
@@ -22,7 +32,7 @@
       <div class="kpi"><div class="muted">Tổng events</div><strong id="kTotal">0</strong></div>
       <div class="kpi"><div class="muted">Events 7 ngày</div><strong id="k7d">0</strong></div>
       <div class="kpi"><div class="muted">Disposal events</div><strong id="kDisp">0</strong></div>
-      <div class="kpi"><div class="muted">Chain integrity</div><strong id="kIntegrity">-</strong></div>
+      <div class="kpi"><div class="muted">Chain integrity</div><strong id="kIntegrity">-</strong><div style="margin-top:6px"><button id="btnVerify" class="btn">Verify full chain</button></div></div>
     </div>
     <div class="layout">
       <section class="card">
@@ -45,15 +55,53 @@
       </aside>
     </div>
   </div>
+  <script src="/js/ui-utils.js"></script>
   <script>
   (function(){
     const API='/api/records/audit'; const state={rows:[],stats:null};
     const h=()=>{const t=localStorage.getItem('token');return t?{Authorization:'Bearer '+t}:{ }};
     const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    function parseMaybeJson(v){try{return typeof v==='string'?JSON.parse(v):(v||null);}catch{return v==null?null:v;}}
     function jfmt(v){try{return JSON.stringify(typeof v==='string'?JSON.parse(v):v,null,2);}catch{return String(v||'');}}
+    function flatten(obj,prefix,out){
+      if(obj===null||obj===undefined){out[prefix||'(root)']=obj;return;}
+      if(typeof obj!=='object'){out[prefix||'(root)']=obj;return;}
+      if(Array.isArray(obj)){
+        if(!obj.length){out[prefix||'(root)']=['(empty)'];return;}
+        obj.forEach((v,i)=>flatten(v,prefix?`${prefix}[${i}]`:`[${i}]`,out));
+        return;
+      }
+      const keys=Object.keys(obj);
+      if(!keys.length){out[prefix||'(root)']={};return;}
+      keys.forEach((k)=>flatten(obj[k],prefix?`${prefix}.${k}`:k,out));
+    }
+    function diffObjects(beforeObj,afterObj){
+      const b={}; const a={}; flatten(beforeObj,'',b); flatten(afterObj,'',a);
+      const keys=new Set([...Object.keys(b),...Object.keys(a)]);
+      const changes=[];
+      keys.forEach((k)=>{
+        const hasB=Object.prototype.hasOwnProperty.call(b,k);
+        const hasA=Object.prototype.hasOwnProperty.call(a,k);
+        if(hasB&&!hasA){changes.push({type:'removed',path:k,oldVal:b[k],newVal:undefined});return;}
+        if(!hasB&&hasA){changes.push({type:'added',path:k,oldVal:undefined,newVal:a[k]});return;}
+        const oldS=JSON.stringify(b[k]); const newS=JSON.stringify(a[k]);
+        if(oldS!==newS){changes.push({type:'changed',path:k,oldVal:b[k],newVal:a[k]});}
+      });
+      changes.sort((x,y)=>x.path.localeCompare(y.path));
+      return changes;
+    }
+    async function runVerify(){
+      const r=await fetch('/api/admin/audit/verify',{headers:h()});
+      const j=await r.json();
+      if(!r.ok) throw new Error(j.error||'Lỗi verify');
+      kIntegrity.textContent=j.ok?`OK (${j.checked})`:`FAIL (${j.failures.length})`;
+      kIntegrity.className=j.ok?'ok':'fail';
+      return j;
+    }
     async function loadStats(){
       const r=await fetch(API+'/stats',{headers:h()}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi stats');
       state.stats=j; kTotal.textContent=j.total_events||0; k7d.textContent=(j.by_event_type||[]).reduce((a,b)=>a+b.c,0); kDisp.textContent=j.disposal_events_7d||0; kIntegrity.textContent=j.integrity_check&&j.integrity_check.ok?'OK':'FAIL';
+      kIntegrity.className=j.integrity_check&&j.integrity_check.ok?'ok':'fail';
       const sel=document.getElementById('fEvent'); sel.innerHTML='<option value="">event_type</option>'; (j.by_event_type||[]).forEach(x=>{const o=document.createElement('option');o.value=x.event_type;o.textContent=x.event_type+' ('+x.c+')';sel.appendChild(o);});
     }
     async function loadRows(){
@@ -64,14 +112,24 @@
     }
     function showDetail(i){
       const x=state.rows[i]; if(!x) return;
+      const beforeObj=parseMaybeJson(x.before_state);
+      const afterObj=parseMaybeJson(x.after_state);
+      const changes=diffObjects(beforeObj,afterObj);
       detail.innerHTML=`<div><strong>${esc(x.event_type)}</strong> · ${esc(x.entity_type)} · ${esc(x.entity_id)}</div>
       <div class="muted">Chain: prev=${esc((x.prev_event_hash||'').slice(0,12))} / curr=${esc((x.event_hash||'').slice(0,12))}</div>
+      <h4>State diff (${changes.length})</h4>
+      <div class="diff-wrap">${changes.length?changes.map((d)=>`<div class="diff-item diff-type-${d.type}">
+        <div><strong>${esc(d.type.toUpperCase())}</strong> · <span class="path">${esc(d.path)}</span></div>
+        <div class="diff-old">${esc(d.type==='added'?'':jfmt(d.oldVal))}</div>
+        <div class="diff-new">${esc(d.type==='removed'?'':jfmt(d.newVal))}</div>
+      </div>`).join(''):'<div class="muted">Không có thay đổi trường dữ liệu.</div>'}</div>
       <h4>before_state</h4><pre>${esc(jfmt(x.before_state))}</pre>
       <h4>after_state</h4><pre>${esc(jfmt(x.after_state))}</pre>
       <h4>payload</h4><pre>${esc(jfmt(x.payload))}</pre>`;
     }
     btnFilter.onclick=async()=>{await loadRows();};
-    (async()=>{try{await loadStats();await loadRows();}catch(e){alert(e.message||String(e));}})();
+    btnVerify.onclick=async()=>{try{const v=await runVerify();UIToast[v.ok?'success':'warn'](v.ok?'Audit chain hợp lệ':'Audit chain lỗi: '+v.failures.length+' điểm');}catch(e){UIToast.error(e.message||String(e));}};
+    (async()=>{try{await loadStats();await loadRows();}catch(e){UIToast.error(e.message||String(e));}})();
   })();
   </script>
 </body>

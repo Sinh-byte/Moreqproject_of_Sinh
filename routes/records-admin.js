@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const express = require('express');
+const PDFDocument = require('pdfkit');
 const { appendEvent } = require('../migrations/0050_records_module.js');
 
 function addYearsIsoDate(isoDate, years) {
@@ -15,6 +16,56 @@ function addYearsIsoDate(isoDate, years) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCFullYear(dt.getUTCFullYear() + years);
   return dt.toISOString().slice(0, 10);
+}
+
+function toCsv(rows, headers) {
+  const esc = (v) => {
+    const s = String(v == null ? '' : v);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const lines = [headers.join(',')];
+  for (const row of rows) lines.push(headers.map((h) => esc(row[h])).join(','));
+  return lines.join('\n');
+}
+
+function collectDestroyedReport(db, from, to) {
+  return db.prepare(`
+    SELECT
+      r.id AS record_id,
+      r.record_number,
+      r.title,
+      r.disposal_confirmed_at,
+      r.disposal_confirmed_by,
+      u.name AS approver_name
+    FROM rm_records r
+    LEFT JOIN users u ON u.id = r.disposal_confirmed_by
+    WHERE r.disposal_action_taken = 'destroyed'
+      AND r.disposal_confirmed_at IS NOT NULL
+      AND datetime(r.disposal_confirmed_at) >= datetime(@from)
+      AND datetime(r.disposal_confirmed_at) <= datetime(@to)
+    ORDER BY datetime(r.disposal_confirmed_at) DESC, r.record_number
+  `).all({ from, to });
+}
+
+function collectOrphanRecords(db) {
+  return db.prepare(`
+    SELECT
+      r.id AS record_id,
+      r.record_number,
+      r.title,
+      r.classification_id,
+      r.aggregation_id,
+      r.state,
+      r.capture_date
+    FROM rm_records r
+    LEFT JOIN rm_classifications c ON c.id = r.classification_id
+    LEFT JOIN rm_aggregations a ON a.id = r.aggregation_id
+    WHERE r.classification_id IS NULL
+       OR c.id IS NULL
+       OR (r.aggregation_id IS NOT NULL AND a.id IS NULL)
+    ORDER BY datetime(r.capture_date) DESC, r.record_number
+  `).all();
 }
 
 function createRecordsAdminRouter(db, requireAuth) {
@@ -356,6 +407,117 @@ function createRecordsAdminRouter(db, requireAuth) {
       return res.json(updated);
     } catch (e) {
       return res.status(500).json({ error: e.message || 'Lỗi deactivate disposal schedule' });
+    }
+  });
+
+  // COMPLIANCE REPORTING
+  router.get('/compliance/destroyed', (req, res) => {
+    try {
+      const from = String(req.query.from || '').trim();
+      const to = String(req.query.to || '').trim();
+      if (!from || !to) {
+        return res.status(400).json({ error: 'from và to là bắt buộc (YYYY-MM-DD)' });
+      }
+      const rows = collectDestroyedReport(db, `${from} 00:00:00`, `${to} 23:59:59`);
+      return res.json({
+        from,
+        to,
+        destroyed_count: rows.length,
+        records: rows,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi báo cáo destroyed records' });
+    }
+  });
+
+  router.get('/compliance/orphan-records', (_req, res) => {
+    try {
+      const rows = collectOrphanRecords(db);
+      return res.json({
+        orphan_count: rows.length,
+        records: rows,
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi báo cáo orphan records' });
+    }
+  });
+
+  router.get('/compliance/export', (req, res) => {
+    try {
+      const reportType = String(req.query.type || '').trim();
+      const format = String(req.query.format || 'csv').trim().toLowerCase();
+      if (!['destroyed', 'orphan'].includes(reportType)) {
+        return res.status(400).json({ error: "type phải là 'destroyed' hoặc 'orphan'" });
+      }
+      if (!['csv', 'pdf'].includes(format)) {
+        return res.status(400).json({ error: "format phải là 'csv' hoặc 'pdf'" });
+      }
+
+      let rows = [];
+      let title = '';
+      let payloadContext = {};
+      if (reportType === 'destroyed') {
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+        if (!from || !to) {
+          return res.status(400).json({ error: 'from và to là bắt buộc cho báo cáo destroyed' });
+        }
+        rows = collectDestroyedReport(db, `${from} 00:00:00`, `${to} 23:59:59`);
+        title = `Destroyed Records Report (${from} -> ${to})`;
+        payloadContext = { from, to };
+      } else {
+        rows = collectOrphanRecords(db);
+        title = 'Orphan Records Report';
+      }
+
+      appendEvent(db, {
+        event_type: 'export',
+        entity_type: 'system',
+        entity_id: 'compliance_report',
+        actor_id: req.user.id,
+        payload: {
+          report_type: reportType,
+          format,
+          count: rows.length,
+          ...payloadContext,
+        },
+      });
+
+      if (format === 'csv') {
+        const headers = reportType === 'destroyed'
+          ? ['record_id', 'record_number', 'title', 'disposal_confirmed_at', 'disposal_confirmed_by', 'approver_name']
+          : ['record_id', 'record_number', 'title', 'classification_id', 'aggregation_id', 'state', 'capture_date'];
+        const csv = toCsv(rows, headers);
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="compliance-${reportType}-${Date.now()}.csv"`);
+        return res.send(csv);
+      }
+
+      const doc = new PDFDocument({ margin: 32, size: 'A4' });
+      const filename = `compliance-${reportType}-${Date.now()}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      doc.pipe(res);
+      doc.fontSize(16).text(title);
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor('#444').text(`Generated at: ${new Date().toISOString()}`);
+      doc.text(`Generated by: ${req.user.id}`);
+      doc.moveDown();
+      if (!rows.length) {
+        doc.fontSize(12).fillColor('black').text('No records found.');
+      } else {
+        rows.forEach((row, idx) => {
+          const line = reportType === 'destroyed'
+            ? `${idx + 1}. ${row.record_number || row.record_id} | ${row.title || ''} | approved: ${row.approver_name || row.disposal_confirmed_by || 'N/A'} | at: ${row.disposal_confirmed_at || ''}`
+            : `${idx + 1}. ${row.record_number || row.record_id} | ${row.title || ''} | class: ${row.classification_id || 'NULL'} | agg: ${row.aggregation_id || 'NULL'} | state: ${row.state || ''}`;
+          doc.fontSize(10).fillColor('black').text(line, { lineGap: 2 });
+          if (doc.y > 760) doc.addPage();
+        });
+      }
+      doc.end();
+      return undefined;
+    } catch (e) {
+      return res.status(500).json({ error: e.message || 'Lỗi export compliance report' });
     }
   });
 

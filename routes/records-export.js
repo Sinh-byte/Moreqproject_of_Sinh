@@ -4,13 +4,28 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const zlib = require('zlib');
 const crypto = require('crypto');
+const zlib = require('zlib');
+const JSZip = require('jszip');
 const { appendEvent } = require('../migrations/0050_records_module.js');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 const importPreviewStore = new Map();
 const UPLOAD_ROOT = path.join(process.cwd(), 'uploads', 'records');
+
+function resolveStoredPath(storedName) {
+  if (!storedName || typeof storedName !== 'string' || storedName.includes('..')) {
+    throw new Error('Đường dẫn file không hợp lệ');
+  }
+  const normalized = path.normalize(storedName).replace(/^(\.\.(\/|\\|$))+/, '');
+  const base = path.resolve(UPLOAD_ROOT);
+  const full = path.resolve(base, normalized);
+  const rel = path.relative(base, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Đường dẫn file không nằm trong thư mục upload');
+  }
+  return full;
+}
 
 function esc(value) {
   return String(value == null ? '' : value)
@@ -30,7 +45,11 @@ function buildRecordsXml(rows, options, db) {
       : [];
     const acl = options.includeAcl
       ? db
-          .prepare('SELECT user_id, permission FROM rm_acl WHERE entity_type = \'record\' AND entity_id = ?')
+          .prepare(`
+            SELECT principal_type, principal_id, permission
+            FROM rm_record_acl
+            WHERE entity_type = 'record' AND entity_id = ?
+          `)
           .all(r.id)
       : [];
     const events = options.includeEventHistory
@@ -52,7 +71,7 @@ function buildRecordsXml(rows, options, db) {
       <mcrs:state>${esc(r.state)}</mcrs:state>
       ${ds ? `<mcrs:disposalSchedule id="${esc(ds.id)}" code="${esc(ds.code)}" retentionYears="${esc(ds.retention_years)}" isPermanent="${esc(ds.is_permanent)}" />` : ''}
       ${components.length ? `<mcrs:components>${components.map((c) => `<mcrs:component id="${esc(c.id)}" filename="${esc(c.filename)}" stored="${esc(c.stored_filename)}" mime="${esc(c.mime_type)}" size="${esc(c.file_size)}" sha256="${esc(c.sha256_hash)}" />`).join('')}</mcrs:components>` : ''}
-      ${acl.length ? `<mcrs:acl>${acl.map((a) => `<mcrs:grant userId="${esc(a.user_id)}" permission="${esc(a.permission)}" />`).join('')}</mcrs:acl>` : ''}
+      ${acl.length ? `<mcrs:acl>${acl.map((a) => `<mcrs:grant principalType="${esc(a.principal_type)}" principalId="${esc(a.principal_id)}" permission="${esc(a.permission)}" />`).join('')}</mcrs:acl>` : ''}
       ${events.length ? `<mcrs:eventHistory>${events.map((e) => `<mcrs:event type="${esc(e.event_type)}" actorId="${esc(e.actor_id)}" occurredAt="${esc(e.occurred_at)}" />`).join('')}</mcrs:eventHistory>` : ''}
     </mcrs:record>`;
   });
@@ -69,7 +88,7 @@ function createRecordsExportRouter(db, requireAuth) {
   router.use(express.json({ limit: '3mb' }));
   router.use(requireAuth);
 
-  router.post('/export', (req, res) => {
+  router.post('/export', async (req, res) => {
     try {
       const b = req.body || {};
       const scope = String(b.scope || '').trim();
@@ -105,29 +124,66 @@ function createRecordsExportRouter(db, requireAuth) {
 
       const xml = buildRecordsXml(rows, options, db);
       if (options.includeComponents) {
-        // Lightweight fallback package: gzip of XML + file list metadata.
-        // Kept as application/zip for compatibility with requested flow.
+        const zip = new JSZip();
         const files = [];
+        const manifestRecords = [];
         for (const r of rows) {
-          const comps = db.prepare('SELECT filename, stored_filename FROM rm_components WHERE record_id = ?').all(r.id);
+          const comps = db
+            .prepare(`
+              SELECT id, filename, stored_filename, mime_type, file_size, sha256_hash, version, component_label, uploaded_at
+              FROM rm_components
+              WHERE record_id = ?
+              ORDER BY uploaded_at ASC
+            `)
+            .all(r.id);
+          const componentManifest = [];
           for (const c of comps) {
-            const abs = path.resolve(UPLOAD_ROOT, c.stored_filename || '');
+            let abs = null;
+            try {
+              abs = resolveStoredPath(c.stored_filename || '');
+            } catch (_e) {
+              abs = null;
+            }
+            const exportName = `${r.id}/${c.stored_filename || c.filename || c.id}`;
+            if (abs && fs.existsSync(abs)) {
+              zip.file(`components/${exportName}`, fs.readFileSync(abs));
+            }
             files.push({
+              record_id: r.id,
+              component_id: c.id,
               filename: c.filename,
               stored_filename: c.stored_filename,
-              exists: fs.existsSync(abs),
+              mime_type: c.mime_type,
+              file_size: c.file_size,
+              sha256_hash: c.sha256_hash,
+              version: c.version,
+              component_label: c.component_label,
+              uploaded_at: c.uploaded_at,
+              export_path: `components/${exportName}`,
+              exists: !!(abs && fs.existsSync(abs)),
             });
+            componentManifest.push(files[files.length - 1]);
           }
+          manifestRecords.push({
+            id: r.id,
+            record_number: r.record_number,
+            title: r.title,
+            doc_type: r.doc_type,
+            classification_id: r.classification_id,
+            aggregation_id: r.aggregation_id,
+            components: componentManifest,
+          });
         }
-        const packed = zlib.gzipSync(
-          Buffer.from(
-            JSON.stringify({
-              xml,
-              files,
-            }, null, 2),
-            'utf8'
-          )
-        );
+        zip.file('records-export.xml', xml);
+        zip.file('manifest.json', JSON.stringify({
+          generated_at: new Date().toISOString(),
+          scope,
+          scopeId,
+          options,
+          records: manifestRecords,
+          files,
+        }, null, 2));
+        const packed = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
         appendEvent(db, {
           event_type: 'export',
           entity_type: 'system',
@@ -154,15 +210,25 @@ function createRecordsExportRouter(db, requireAuth) {
     }
   });
 
-  router.post('/import', upload.single('file'), (req, res) => {
+  router.post('/import', upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Thiếu file import' });
       let xml = '';
       const name = String(req.file.originalname || '').toLowerCase();
       if (name.endsWith('.zip')) {
-        const raw = zlib.gunzipSync(req.file.buffer).toString('utf8');
-        const parsed = JSON.parse(raw);
-        xml = String(parsed.xml || '');
+        try {
+          const raw = zlib.gunzipSync(req.file.buffer).toString('utf8');
+          const parsed = JSON.parse(raw);
+          xml = String(parsed.xml || '');
+        } catch (_legacyErr) {
+          const zip = await JSZip.loadAsync(req.file.buffer);
+          if (zip.file('records-export.xml')) {
+            xml = await zip.file('records-export.xml').async('string');
+          } else if (zip.file('manifest.json')) {
+            const manifest = JSON.parse(await zip.file('manifest.json').async('string'));
+            xml = String(manifest.xml || '');
+          }
+        }
       } else {
         xml = req.file.buffer.toString('utf8');
       }

@@ -53,6 +53,7 @@
       </table>
     </section>
   </div>
+  <script src="/js/ui-utils.js"></script>
   <script>
   (function(){
     const API='/api/records/acl';
@@ -64,13 +65,14 @@
       users=j; tbUsers.innerHTML=users.map(u=>`<tr><td>${esc(u.name||u.id)}</td><td>${esc(u.email)}</td><td>${esc(u.role_name)}</td><td>${u.entity_acl_count||0}</td></tr>`).join('');
     }
     async function loadAcl(){
-      if(!entityId.value.trim()) return alert('Nhập entityId');
+      if(!entityId.value.trim()) return UIToast.warn('Nhập entityId');
       const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}`,{headers:h(false)}); const j=await r.json(); if(!r.ok) throw new Error(j.error||'Lỗi ACL');
       aclRows=j; renderMatrix();
     }
     function permCell(userId, perm){
-      const row=aclRows.find(x=>x.user_id===userId);
-      const checked=row&&row.permission===perm?'checked':'';
+      const row=aclRows.find(x=>x.principal_type==='user'&&x.principal_id===userId);
+      const mapped = perm==='read'?'view':(perm==='read_download'?'download':'acl_manage');
+      const checked=row&&row.permission===mapped?'checked':'';
       return `<input type="radio" name="p-${userId}" value="${perm}" ${checked}>`;
     }
     function renderMatrix(){
@@ -85,18 +87,20 @@
       tbAcl.querySelectorAll('button[data-revoke]').forEach(b=>b.onclick=()=>revoke(b.dataset.revoke));
     }
     async function grant(userId, permission){
-      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}`,{method:'POST',headers:h(true),body:JSON.stringify({userId,permission})});
-      const j=await r.json(); if(!r.ok) return alert(j.error||'Lỗi grant');
+      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}/grants`,{method:'POST',headers:h(true),body:JSON.stringify({principalType:'user',principalId:userId,permission:permission==='read'?'view':(permission==='read_download'?'download':'acl_manage')})});
+      const j=await r.json(); if(!r.ok) return UIToast.error(j.error||'Lỗi grant');
       await loadAcl();
     }
     async function revoke(userId){
-      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}/${encodeURIComponent(userId)}`,{method:'DELETE',headers:h(false)});
-      const j=await r.json(); if(!r.ok) return alert(j.error||'Lỗi revoke');
+      const target=aclRows.find(x=>x.principal_type==='user'&&x.principal_id===userId);
+      if(!target) return UIToast.warn('Không tìm thấy ACL để revoke');
+      const r=await fetch(`${API}/${encodeURIComponent(entityType.value)}/${encodeURIComponent(entityId.value.trim())}/grants/${encodeURIComponent(target.id)}`,{method:'DELETE',headers:h(false)});
+      const j=await r.json(); if(!r.ok) return UIToast.error(j.error||'Lỗi revoke');
       await loadAcl();
     }
-    loadAclBtn.onclick=async()=>{try{await loadAcl();}catch(e){alert(e.message||String(e));}};
+    loadAclBtn.onclick=async()=>{try{await loadAcl();}catch(e){UIToast.error(e.message||String(e));}};
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.getElementById('p-'+b.dataset.t).classList.add('on');});
-    (async()=>{try{await loadUsers();}catch(e){alert(e.message||String(e));}})();
+    (async()=>{try{await loadUsers();}catch(e){UIToast.error(e.message||String(e));}})();
   })();
   </script>
 </body>

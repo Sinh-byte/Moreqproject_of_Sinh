@@ -23,8 +23,11 @@
     .layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
     @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
     .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-    .toolbar { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .toolbar { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
     @media (max-width: 980px) { .toolbar { grid-template-columns: 1fr; } }
+    .advanced-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom: 10px; }
+    @media (max-width: 980px) { .advanced-grid { grid-template-columns: 1fr; } }
+    .btn { border:1px solid var(--border); background:#111b2f; color:#e5edf9; border-radius:8px; padding:8px 10px; cursor:pointer; }
     input, select {
       width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #0e1628; color: #e5edf9;
     }
@@ -53,6 +56,9 @@
     .pagination button { border: 1px solid var(--border); background: #111b2f; color: #e5edf9; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
     .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
     .err { display: none; margin-bottom: 10px; border: 1px solid #7f1d1d; background: rgba(127, 29, 29, 0.3); color: #fecaca; padding: 9px 10px; border-radius: 8px; }
+    .bulk-box { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 10px; background: #111b2f; padding: 10px; }
+    .bulk-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; align-items:end; }
+    @media (max-width: 980px) { .bulk-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -67,7 +73,9 @@
 
       <main class="panel">
         <div class="toolbar">
-          <input id="search" placeholder="Tìm theo tiêu đề, số hiệu, record number..." />
+          <input id="search" placeholder="Từ khóa chung..." />
+          <input id="titleSearch" placeholder="Tiêu đề (title)" />
+          <input id="docRefSearch" placeholder="Số hiệu (docRef/record no.)" />
           <select id="docType">
             <option value="">Tất cả loại</option>
             <option value="regulation">Regulation</option>
@@ -90,13 +98,43 @@
           <select id="year">
             <option value="">Tất cả năm</option>
           </select>
+          <button id="toggleAdvancedBtn" class="btn" type="button">Bộ lọc nâng cao</button>
+        </div>
+        <div id="advancedFilters" class="advanced-grid" style="display:none">
+          <input id="issueDateFrom" type="date" placeholder="Ngày ban hành từ" />
+          <input id="issueDateTo" type="date" placeholder="Ngày ban hành đến" />
+          <input id="tagIds" placeholder="Tag IDs (phân tách bằng dấu phẩy)" />
+          <select id="classificationScope">
+            <option value="exact">Classification chính xác</option>
+            <option value="descendants">Bao gồm lớp con</option>
+          </select>
+        </div>
+        <div class="bulk-box">
+          <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">
+            Bulk Actions · Đã chọn: <strong id="selectedCount">0</strong> records
+          </div>
+          <div class="bulk-grid">
+            <div>
+              <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px;">Đổi Classification</label>
+              <select id="bulkClassification"></select>
+            </div>
+            <button id="bulkClassifyBtn" class="btn" type="button">Áp dụng Classification</button>
+            <div>
+              <label style="display:block; font-size:12px; color:var(--muted); margin-bottom:4px;">Thêm Tags (CSV IDs)</label>
+              <input id="bulkTagIds" placeholder="tag1,tag2" />
+            </div>
+            <button id="bulkTagsBtn" class="btn" type="button">Gán thêm Tags</button>
+          </div>
+          <div style="margin-top:8px;">
+            <button id="bulkDisposalBtn" class="btn" type="button">Đưa vào quy trình xét duyệt tiêu hủy</button>
+          </div>
         </div>
 
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th><input type="checkbox" /></th>
+                <th><input type="checkbox" id="selectAll" /></th>
                 <th>Tên + Số hiệu</th>
                 <th>Loại</th>
                 <th>Ngày ban hành</th>
@@ -121,6 +159,7 @@
     </div>
   </div>
 
+  <script src="/js/ui-utils.js"></script>
   <script>
     (function () {
       const API = '/api/records';
@@ -132,8 +171,16 @@
         docType: '',
         classificationId: '',
         year: '',
+        title: '',
+        docRef: '',
+        issueDateFrom: '',
+        issueDateTo: '',
+        tagIds: '',
+        classificationScope: 'exact',
         totalPages: 1,
         classes: [],
+        tags: [],
+        selectedIds: new Set(),
       };
 
       function authHeaders() {
@@ -174,11 +221,27 @@
         q.set('sortBy', 'capture_date');
         q.set('sortDir', 'desc');
         if (state.search) q.set('search', state.search);
+        if (state.title) q.set('title', state.title);
+        if (state.docRef) q.set('docRef', state.docRef);
         if (state.stateFilter) q.set('state', state.stateFilter);
         if (state.docType) q.set('docType', state.docType);
-        if (state.classificationId) q.set('classificationId', state.classificationId);
+        if (state.classificationId) {
+          q.set('classificationId', state.classificationId);
+          q.set('classificationScope', state.classificationScope || 'exact');
+        }
         if (state.year) q.set('year', state.year);
+        if (state.issueDateFrom) q.set('issueDateFrom', state.issueDateFrom);
+        if (state.issueDateTo) q.set('issueDateTo', state.issueDateTo);
+        if (state.tagIds) q.set('tagIds', state.tagIds);
         return q.toString();
+      }
+
+      function selectedArray() {
+        return Array.from(state.selectedIds);
+      }
+
+      function updateSelectedCount() {
+        document.getElementById('selectedCount').textContent = String(state.selectedIds.size);
       }
 
       async function loadRecords() {
@@ -189,6 +252,7 @@
           if (!res.ok) throw new Error(data.error || 'Không tải được records');
           state.totalPages = data.totalPages || 1;
           renderTable(data.records || []);
+          updateSelectedCount();
           document.getElementById('pageInfo').textContent = 'Trang ' + state.page + '/' + state.totalPages + ' - ' + (data.total || 0) + ' bản ghi';
           document.getElementById('prevBtn').disabled = state.page <= 1;
           document.getElementById('nextBtn').disabled = state.page >= state.totalPages;
@@ -211,8 +275,9 @@
             else if (r.days_to_disposal < 30) tr.classList.add('due-soon');
           }
           const tags = Array.isArray(r.tags) ? r.tags : [];
+          const checked = state.selectedIds.has(r.id) ? ' checked' : '';
           tr.innerHTML =
-            '<td><input type="checkbox"></td>' +
+            '<td><input type="checkbox" class="rowCheck" data-id="' + esc(r.id) + '"' + checked + '></td>' +
             '<td><a class="row-link" href="/records/detail.html?id=' + encodeURIComponent(r.id) + '">' + esc(r.title) + '</a><br><small>' + esc(r.record_number || '') + ' · ' + esc(r.doc_ref || '') + '</small></td>' +
             '<td>' + esc(r.doc_type || '') + '</td>' +
             '<td>' + esc(r.issue_date || '—') + '</td>' +
@@ -221,6 +286,14 @@
             '<td><div class="tags">' + tags.map(function (t) { return '<span class="tag">' + esc(t.name) + '</span>'; }).join('') + '</div></td>' +
             '<td class="actions"><a href="/records/detail.html?id=' + encodeURIComponent(r.id) + '">Mở</a></td>';
           tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('.rowCheck').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            const id = cb.getAttribute('data-id');
+            if (cb.checked) state.selectedIds.add(id);
+            else state.selectedIds.delete(id);
+            updateSelectedCount();
+          });
         });
       }
 
@@ -231,9 +304,32 @@
           if (!res.ok) throw new Error(data.error || 'Không tải được phân loại');
           state.classes = Array.isArray(data) ? data : [];
           renderClassTree();
+          renderBulkClassificationOptions();
         } catch (e) {
           showError(e.message || String(e));
         }
+      }
+
+      async function loadTags() {
+        try {
+          const res = await fetch('/api/records/capture/tags', { headers: authHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Không tải được tags');
+          state.tags = Array.isArray(data) ? data : [];
+        } catch (e) {
+          showError(e.message || String(e));
+        }
+      }
+
+      function renderBulkClassificationOptions() {
+        const sel = document.getElementById('bulkClassification');
+        sel.innerHTML = '<option value="">Chọn Classification</option>';
+        state.classes.forEach(function (c) {
+          const op = document.createElement('option');
+          op.value = c.id;
+          op.textContent = (c.code || '') + ' - ' + (c.name || '');
+          sel.appendChild(op);
+        });
       }
 
       function renderClassTree() {
@@ -251,7 +347,9 @@
         clearBtn.style.cssText = 'margin-bottom:8px; border:1px solid var(--border); background:#111b2f; color:#e5edf9; border-radius:8px; padding:6px 8px; cursor:pointer;';
         clearBtn.onclick = function () {
           state.classificationId = '';
+          state.classificationScope = 'exact';
           state.page = 1;
+          document.getElementById('classificationScope').value = 'exact';
           renderClassTree();
           loadRecords();
         };
@@ -293,12 +391,57 @@
         }
       }
 
+      async function postJson(url, body) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Bulk action thất bại');
+        return data;
+      }
+
+      async function runBulkClassification() {
+        const ids = selectedArray();
+        const classificationId = document.getElementById('bulkClassification').value;
+        if (!ids.length) throw new Error('Chưa chọn record nào');
+        if (!classificationId) throw new Error('Chưa chọn classification');
+        return postJson('/api/records/bulk/classification', { recordIds: ids, classificationId });
+      }
+
+      async function runBulkTags() {
+        const ids = selectedArray();
+        const raw = document.getElementById('bulkTagIds').value.trim();
+        const tagIds = raw ? raw.split(',').map(function (x) { return x.trim(); }).filter(Boolean) : [];
+        if (!ids.length) throw new Error('Chưa chọn record nào');
+        if (!tagIds.length) throw new Error('Nhập ít nhất 1 tag ID');
+        return postJson('/api/records/bulk/tags', { recordIds: ids, tagIds });
+      }
+
+      async function runBulkDisposal() {
+        const ids = selectedArray();
+        if (!ids.length) throw new Error('Chưa chọn record nào');
+        return postJson('/api/records/bulk/disposal-review', { recordIds: ids });
+      }
+
       let searchTimer = null;
-      document.getElementById('search').addEventListener('input', function (e) {
-        state.search = e.target.value.trim();
+      function debounceReload() {
         state.page = 1;
         clearTimeout(searchTimer);
         searchTimer = setTimeout(loadRecords, 300);
+      }
+      document.getElementById('search').addEventListener('input', function (e) {
+        state.search = e.target.value.trim();
+        debounceReload();
+      });
+      document.getElementById('titleSearch').addEventListener('input', function (e) {
+        state.title = e.target.value.trim();
+        debounceReload();
+      });
+      document.getElementById('docRefSearch').addEventListener('input', function (e) {
+        state.docRef = e.target.value.trim();
+        debounceReload();
       });
       document.getElementById('docType').addEventListener('change', function (e) {
         state.docType = e.target.value;
@@ -315,6 +458,30 @@
         state.page = 1;
         loadRecords();
       });
+      document.getElementById('issueDateFrom').addEventListener('change', function (e) {
+        state.issueDateFrom = e.target.value;
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('issueDateTo').addEventListener('change', function (e) {
+        state.issueDateTo = e.target.value;
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('tagIds').addEventListener('input', function (e) {
+        state.tagIds = e.target.value.trim();
+        debounceReload();
+      });
+      document.getElementById('classificationScope').addEventListener('change', function (e) {
+        state.classificationScope = e.target.value || 'exact';
+        state.page = 1;
+        loadRecords();
+      });
+      document.getElementById('toggleAdvancedBtn').addEventListener('click', function () {
+        const box = document.getElementById('advancedFilters');
+        const isHidden = box.style.display === 'none';
+        box.style.display = isHidden ? 'grid' : 'none';
+      });
       document.getElementById('prevBtn').addEventListener('click', function () {
         if (state.page > 1) {
           state.page -= 1;
@@ -327,9 +494,41 @@
           loadRecords();
         }
       });
+      document.getElementById('selectAll').addEventListener('change', function (e) {
+        const checks = document.querySelectorAll('#tbody .rowCheck');
+        checks.forEach(function (cb) {
+          cb.checked = !!e.target.checked;
+          const id = cb.getAttribute('data-id');
+          if (cb.checked) state.selectedIds.add(id);
+          else state.selectedIds.delete(id);
+        });
+        updateSelectedCount();
+      });
+      document.getElementById('bulkClassifyBtn').addEventListener('click', async function () {
+        try {
+          const r = await runBulkClassification();
+          UIToast.success('Đã cập nhật ' + (r.updated || []).length + ' records. Bỏ qua: ' + (r.skipped || []).length);
+          await loadRecords();
+        } catch (e) { showError(e.message || String(e)); }
+      });
+      document.getElementById('bulkTagsBtn').addEventListener('click', async function () {
+        try {
+          const r = await runBulkTags();
+          UIToast.success('Đã gán tags cho ' + (r.updated || []).length + ' records. Bỏ qua: ' + (r.skipped || []).length);
+          await loadRecords();
+        } catch (e) { showError(e.message || String(e)); }
+      });
+      document.getElementById('bulkDisposalBtn').addEventListener('click', async function () {
+        try {
+          const r = await runBulkDisposal();
+          UIToast.success('Đã đưa vào quy trình: ' + (r.queued || []).length + ' records. Bỏ qua: ' + (r.skipped || []).length);
+          await loadRecords();
+        } catch (e) { showError(e.message || String(e)); }
+      });
 
       initYearOptions();
       loadClassifications();
+      loadTags();
       loadRecords();
     })();
   </script>

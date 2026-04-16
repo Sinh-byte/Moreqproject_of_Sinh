@@ -19,6 +19,7 @@ function createRecordsDashboardRouter(db, requireAuth) {
       const row = db.prepare(`
         SELECT
           (SELECT COUNT(1) FROM rm_records) AS totalRecords,
+          (SELECT COUNT(1) FROM rm_records WHERE is_frozen = 1) AS frozenRecords,
           (
             SELECT json_group_object(state, c)
             FROM (SELECT state, COUNT(1) AS c FROM rm_records GROUP BY state)
@@ -51,10 +52,12 @@ function createRecordsDashboardRouter(db, requireAuth) {
               SELECT id, record_number, title, retention_due_date
               FROM rm_records
               WHERE retention_due_date IS NOT NULL
+                AND date(retention_due_date) >= date('now')
+                AND date(retention_due_date) <= date('now', '+30 days')
               ORDER BY date(retention_due_date) ASC
-              LIMIT 30
+              LIMIT 100
             )
-          ) AS disposalTimeline,
+          ) AS upcomingDisposals,
           (
             SELECT json_object(
               'hasClassification', (SELECT COUNT(1) FROM rm_records WHERE classification_id IS NOT NULL),
@@ -102,10 +105,11 @@ function createRecordsDashboardRouter(db, requireAuth) {
 
       return res.json({
         totalRecords: row.totalRecords || 0,
+        frozenRecords: row.frozenRecords || 0,
         byState: safeJsonParse(row.byState || '{}', {}),
         byDocType: safeJsonParse(row.byDocType || '{}', {}),
         captureByMonth: safeJsonParse(row.captureByMonth || '[]', []),
-        disposalTimeline: safeJsonParse(row.disposalTimeline || '[]', []),
+        upcomingDisposals: safeJsonParse(row.upcomingDisposals || '[]', []),
         healthMetrics: safeJsonParse(row.healthMetrics || '{}', {}),
         activityByUser: safeJsonParse(row.activityByUser || '[]', []),
       });

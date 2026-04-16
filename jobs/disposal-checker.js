@@ -23,11 +23,12 @@ function runDisposalCheck(db) {
     SELECT
       r.id,
       r.title,
+      r.is_frozen,
       r.disposal_schedule_id,
       IFNULL(ds.confirmation_days, 30) AS confirmation_days
     FROM rm_records r
     LEFT JOIN rm_disposal_schedules ds ON ds.id = r.disposal_schedule_id
-    WHERE r.state = 'active'
+    WHERE r.state IN ('active', 'review')
       AND r.retention_due_date IS NOT NULL
       AND date(r.retention_due_date) <= date('now')
       AND r.disposal_alert_sent_at IS NULL
@@ -43,7 +44,7 @@ function runDisposalCheck(db) {
     INSERT INTO rm_disposal_workflow (
       id, record_id, triggered_at, deadline, status
     ) VALUES (
-      @id, @record_id, datetime('now'), @deadline, 'pending'
+      @id, @record_id, datetime('now'), @deadline, @status
     )
   `);
   const updateRecord = db.prepare(`
@@ -53,19 +54,49 @@ function runDisposalCheck(db) {
         updated_at = ${nowSql}
     WHERE id = @record_id
   `);
+  const holdWorkflow = db.prepare(`
+    UPDATE rm_disposal_workflow
+    SET status = 'on_hold'
+    WHERE record_id = @record_id
+      AND status <> 'completed'
+  `);
 
   const tx = db.transaction((rows) => {
     let inserted = 0;
+    let onHold = 0;
     for (const r of rows) {
       const exists = db
         .prepare('SELECT id FROM rm_disposal_workflow WHERE record_id = ?')
         .get(r.id);
+      if (r.is_frozen === 1) {
+        if (!exists) {
+          insertWorkflow.run({
+            id: crypto.randomUUID(),
+            record_id: r.id,
+            deadline: addDaysIsoDateTime(r.confirmation_days || 30),
+            status: 'on_hold',
+          });
+          appendEvent(db, {
+            event_type: 'disposal_hold',
+            entity_type: 'record',
+            entity_id: r.id,
+            entity_title: r.title,
+            actor_id: null,
+            payload: { source: 'daily_checker', reason: 'record_frozen' },
+          });
+          onHold += 1;
+        } else {
+          holdWorkflow.run({ record_id: r.id });
+        }
+        continue;
+      }
       if (exists) continue;
 
       insertWorkflow.run({
         id: crypto.randomUUID(),
         record_id: r.id,
         deadline: addDaysIsoDateTime(r.confirmation_days || 30),
+        status: 'pending_review',
       });
       updateRecord.run({ record_id: r.id });
       appendEvent(db, {
@@ -81,12 +112,12 @@ function runDisposalCheck(db) {
       });
       inserted += 1;
     }
-    return inserted;
+    return { inserted, onHold };
   });
 
-  const inserted = tx(dueRecords);
-  console.log(`[disposal-checker] Đã trigger ${inserted} record(s).`);
-  return { triggered: inserted };
+  const outcome = tx(dueRecords);
+  console.log(`[disposal-checker] Đã trigger ${outcome.inserted} record(s), on_hold ${outcome.onHold}.`);
+  return { triggered: outcome.inserted, onHold: outcome.onHold };
 }
 
 function startDisposalChecker(db) {

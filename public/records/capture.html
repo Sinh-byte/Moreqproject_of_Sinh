@@ -72,6 +72,21 @@
     .step.done { color: #a7f3d0; }
     .step .num { font-weight: 700; color: var(--emerald); }
     .step.done .num::after { content: ' ✓'; }
+    .progress-wrap {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.8);
+      margin: -0.4rem 0 1rem;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 25%;
+      background: linear-gradient(90deg, #10b981, #22d3ee);
+      transition: width 0.25s ease;
+    }
 
     .layout { display: grid; gap: 1rem; }
     @media (min-width: 900px) {
@@ -121,7 +136,7 @@
     .file-list { margin-top: 1rem; }
     .file-row {
       display: grid;
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: auto 1fr auto auto;
       gap: 0.5rem;
       align-items: center;
       padding: 0.5rem 0;
@@ -130,6 +145,22 @@
     }
     .file-row:last-child { border-bottom: none; }
     .hash { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--muted); }
+    .file-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.72rem;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.7);
+      color: #cbd5e1;
+    }
+    .file-icon.pdf { color: #fecaca; border-color: #f87171; }
+    .file-icon.word { color: #bfdbfe; border-color: #60a5fa; }
+    .file-icon.image { color: #fde68a; border-color: #fbbf24; }
 
     .tree { font-size: 0.88rem; max-height: 420px; overflow: auto; padding-right: 0.25rem; }
     .tree ul { list-style: none; margin: 0; padding-left: 1rem; }
@@ -181,7 +212,26 @@
       border-color: var(--danger);
       box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
     }
+    .field-err {
+      margin-top: 0.22rem;
+      color: #fecaca;
+      font-size: 0.75rem;
+      min-height: 1rem;
+    }
     .req::after { content: ' *'; color: var(--danger); }
+    .meta-group {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      margin-bottom: 0.9rem;
+      background: rgba(15, 23, 42, 0.35);
+    }
+    .meta-group h3 {
+      margin: 0 0 0.6rem;
+      font-size: 0.86rem;
+      color: #a7f3d0;
+      letter-spacing: 0.01em;
+    }
 
     .tags-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .tag-pill {
@@ -249,6 +299,9 @@
       <div class="step" data-i="3"><span class="num">3</span><br />Metadata</div>
       <div class="step" data-i="4"><span class="num">4</span><br />Phong bế</div>
     </div>
+    <div class="progress-wrap" aria-hidden="true">
+      <div id="progress-fill" class="progress-fill"></div>
+    </div>
 
     <!-- Bước 1 -->
     <div class="panel visible" data-step="1">
@@ -311,74 +364,107 @@
     <div class="panel" data-step="3">
       <div class="layout layout-2">
         <div>
-          <div class="field" id="f-docRef">
-            <label>Số hiệu văn bản</label>
-            <input type="text" id="meta-docRef" autocomplete="off" />
+          <div class="meta-group">
+            <h3>Thông tin chung</h3>
+            <div class="field" id="f-docRef">
+              <label>Số hiệu văn bản</label>
+              <input type="text" id="meta-docRef" autocomplete="off" />
+              <div class="field-err" data-err-for="f-docRef"></div>
+            </div>
+            <div class="field" id="f-docType">
+              <label class="req">Loại văn bản</label>
+              <select id="meta-docType">
+                <option value="regulation">Quy chế / Quy định</option>
+                <option value="decision">Quyết định</option>
+                <option value="contract">Hợp đồng</option>
+                <option value="minutes">Biên bản</option>
+                <option value="memo">Công văn / Memo</option>
+                <option value="plan">Kế hoạch</option>
+                <option value="dispatch">Công điện</option>
+                <option value="other">Khác</option>
+              </select>
+              <div class="field-err" data-err-for="f-docType"></div>
+            </div>
+            <div class="field invalid-target" id="f-title">
+              <label class="req">Tiêu đề</label>
+              <input type="text" id="meta-title" autocomplete="off" />
+              <div class="field-err" data-err-for="f-title"></div>
+            </div>
+            <div class="field invalid-target" id="f-author">
+              <label class="req">Người soạn</label>
+              <input type="text" id="meta-author" autocomplete="off" />
+              <div class="field-err" data-err-for="f-author"></div>
+            </div>
+            <div class="field" id="f-approver">
+              <label>Người phê duyệt</label>
+              <input type="text" id="meta-approver" autocomplete="off" />
+              <div class="field-err" data-err-for="f-approver"></div>
+            </div>
+            <div class="field invalid-target" id="f-issuing">
+              <label class="req">Đơn vị ban hành</label>
+              <input type="text" id="meta-issuing" autocomplete="off" />
+              <div class="field-err" data-err-for="f-issuing"></div>
+            </div>
           </div>
-          <div class="field" id="f-docType">
-            <label class="req">Loại văn bản</label>
-            <select id="meta-docType">
-              <option value="regulation">Quy chế / Quy định</option>
-              <option value="decision">Quyết định</option>
-              <option value="contract">Hợp đồng</option>
-              <option value="minutes">Biên bản</option>
-              <option value="memo">Công văn / Memo</option>
-              <option value="plan">Kế hoạch</option>
-              <option value="dispatch">Công điện</option>
-              <option value="other">Khác</option>
-            </select>
+
+          <div class="meta-group">
+            <h3>Thời hạn</h3>
+            <div class="field invalid-target" id="f-issueDate">
+              <label class="req">Ngày ban hành</label>
+              <input type="date" id="meta-issueDate" />
+              <div class="field-err" data-err-for="f-issueDate"></div>
+            </div>
+            <div class="field" id="f-effectiveDate">
+              <label>Ngày hiệu lực</label>
+              <input type="date" id="meta-effectiveDate" />
+              <div class="field-err" data-err-for="f-effectiveDate"></div>
+            </div>
+            <div class="field" id="f-expiryDate">
+              <label>Ngày hết hiệu lực</label>
+              <input type="date" id="meta-expiryDate" />
+              <div class="field-err" data-err-for="f-expiryDate"></div>
+            </div>
+            <div class="field" id="f-trigger">
+              <label>Sự kiện tính retention</label>
+              <select id="meta-trigger">
+                <option value="issue_date">Ngày ban hành</option>
+                <option value="expiry_date">Ngày hết hiệu lực</option>
+                <option value="custom">Tùy chỉnh (ngày trigger)</option>
+              </select>
+              <div class="field-err" data-err-for="f-trigger"></div>
+            </div>
+            <div class="field" id="f-triggerOverride" style="display:none;">
+              <label class="req">Ngày trigger</label>
+              <input type="date" id="meta-triggerOverride" />
+              <div class="field-err" data-err-for="f-triggerOverride"></div>
+            </div>
           </div>
-          <div class="field invalid-target" id="f-title">
-            <label class="req">Tiêu đề</label>
-            <input type="text" id="meta-title" autocomplete="off" />
-          </div>
-          <div class="field invalid-target" id="f-issueDate">
-            <label class="req">Ngày ban hành</label>
-            <input type="date" id="meta-issueDate" />
-          </div>
-          <div class="field" id="f-effectiveDate">
-            <label>Ngày hiệu lực</label>
-            <input type="date" id="meta-effectiveDate" />
-          </div>
-          <div class="field" id="f-expiryDate">
-            <label>Ngày hết hiệu lực</label>
-            <input type="date" id="meta-expiryDate" />
-          </div>
-          <div class="field" id="f-trigger">
-            <label>Sự kiện tính retention</label>
-            <select id="meta-trigger">
-              <option value="issue_date">Ngày ban hành</option>
-              <option value="expiry_date">Ngày hết hiệu lực</option>
-              <option value="custom">Tùy chỉnh (ngày trigger)</option>
-            </select>
-          </div>
-          <div class="field" id="f-triggerOverride" style="display:none;">
-            <label class="req">Ngày trigger</label>
-            <input type="date" id="meta-triggerOverride" />
-          </div>
-          <div class="field invalid-target" id="f-author">
-            <label class="req">Người soạn</label>
-            <input type="text" id="meta-author" autocomplete="off" />
-          </div>
-          <div class="field" id="f-approver">
-            <label>Người phê duyệt</label>
-            <input type="text" id="meta-approver" autocomplete="off" />
-          </div>
-          <div class="field invalid-target" id="f-issuing">
-            <label class="req">Đơn vị ban hành</label>
-            <input type="text" id="meta-issuing" autocomplete="off" />
-          </div>
-          <div class="field" id="f-desc">
-            <label>Mô tả</label>
-            <textarea id="meta-desc"></textarea>
-          </div>
-          <div class="field" id="f-kw">
-            <label>Từ khóa (phân tách bằng dấu phẩy)</label>
-            <input type="text" id="meta-kw" autocomplete="off" />
-          </div>
-          <div class="field" id="f-tags">
-            <label>Thẻ (tags)</label>
-            <div class="tags-grid" id="tags-grid"></div>
+
+          <div class="meta-group">
+            <h3>Bảo mật</h3>
+            <div class="field" id="f-security">
+              <label>Quyền truy cập</label>
+              <select id="meta-access-level">
+                <option value="internal">Nội bộ (internal)</option>
+                <option value="confidential">Nhạy cảm (confidential)</option>
+              </select>
+              <div class="field-err" data-err-for="f-security"></div>
+            </div>
+            <div class="field" id="f-desc">
+              <label>Mô tả</label>
+              <textarea id="meta-desc"></textarea>
+              <div class="field-err" data-err-for="f-desc"></div>
+            </div>
+            <div class="field" id="f-kw">
+              <label>Từ khóa (phân tách bằng dấu phẩy)</label>
+              <input type="text" id="meta-kw" autocomplete="off" />
+              <div class="field-err" data-err-for="f-kw"></div>
+            </div>
+            <div class="field" id="f-tags">
+              <label>Thẻ (tags)</label>
+              <div class="tags-grid" id="tags-grid"></div>
+              <div class="field-err" data-err-for="f-tags"></div>
+            </div>
           </div>
         </div>
         <aside>
@@ -480,6 +566,8 @@
       s.classList.toggle('done', i < n);
     });
     clearBanner();
+    const pct = Math.max(1, Math.min(4, n)) * 25;
+    document.getElementById('progress-fill').style.width = pct + '%';
     if (n === 4) renderSummary();
     if (n === 3) syncMetaSidebar();
   }
@@ -710,6 +798,22 @@
     wizardState.uploadedFiles.forEach(function (f, idx) {
       const row = document.createElement('div');
       row.className = 'file-row';
+      const icon = document.createElement('div');
+      const lower = String(f.originalName || '').toLowerCase();
+      let iconType = 'pdf';
+      let iconText = 'PDF';
+      if (lower.endsWith('.doc') || lower.endsWith('.docx')) {
+        iconType = 'word';
+        iconText = 'DOC';
+      } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+        iconType = 'image';
+        iconText = 'IMG';
+      } else if (lower.endsWith('.xls') || lower.endsWith('.xlsx')) {
+        iconType = 'word';
+        iconText = 'XLS';
+      }
+      icon.className = 'file-icon ' + iconType;
+      icon.textContent = iconText;
       const info = document.createElement('div');
       info.innerHTML =
         '<strong>' + escapeHtml(f.originalName) + '</strong><br>' +
@@ -740,6 +844,7 @@
         renderFileList();
         document.getElementById('to-step-2').disabled = wizardState.uploadedFiles.length === 0;
       });
+      row.appendChild(icon);
       row.appendChild(info);
       row.appendChild(prim);
       row.appendChild(rm);
@@ -855,6 +960,14 @@
 
   function clearInvalid() {
     document.querySelectorAll('.field.invalid').forEach(function (el) { el.classList.remove('invalid'); });
+    document.querySelectorAll('.field-err').forEach(function (el) { el.textContent = ''; });
+  }
+
+  function setFieldError(fieldId, message) {
+    const f = document.getElementById(fieldId);
+    if (f) f.classList.add('invalid');
+    const err = document.querySelector('[data-err-for="' + fieldId + '"]');
+    if (err) err.textContent = message || 'Trường này là bắt buộc';
   }
 
   function validateStep3() {
@@ -862,7 +975,7 @@
     let ok = true;
     function need(idField, val) {
       if (!val || !String(val).trim()) {
-        document.getElementById(idField).classList.add('invalid');
+        setFieldError(idField, 'Vui lòng nhập thông tin bắt buộc');
         ok = false;
       }
     }
@@ -914,6 +1027,7 @@
       '<p>Ngày HL: ' + escapeHtml(document.getElementById('meta-effectiveDate').value || '—') + '</p>' +
       '<p>Ngày hết HL: ' + escapeHtml(document.getElementById('meta-expiryDate').value || '—') + '</p>' +
       '<p>Trigger: ' + escapeHtml(document.getElementById('meta-trigger').value) + '</p>' +
+      '<p>Mức truy cập: ' + escapeHtml(document.getElementById('meta-access-level').value) + '</p>' +
       '<p>Người soạn: ' + escapeHtml(document.getElementById('meta-author').value) + '</p>' +
       '<p>Đơn vị: ' + escapeHtml(document.getElementById('meta-issuing').value) + '</p>' +
       '<p>Tags: ' + escapeHtml(tagNames) + '</p>' +
@@ -952,6 +1066,7 @@
       issuingUnit: document.getElementById('meta-issuing').value.trim(),
       description: document.getElementById('meta-desc').value.trim() || null,
       keywords: document.getElementById('meta-kw').value.trim() || null,
+      isConfidential: document.getElementById('meta-access-level').value === 'confidential',
       tagIds: wizardState.tagIds.slice(),
     };
 

@@ -47,6 +47,7 @@
       <ul id="history"></ul>
     </section>
   </div>
+  <script src="/js/ui-utils.js"></script>
   <script>
   (function(){
     const API='/api/records'; let previewId=null;
@@ -62,16 +63,16 @@
         if(!r.ok){const t=await r.text();throw new Error(t);}
         const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='records-export'; a.click(); URL.revokeObjectURL(url);
         addHist('Export thành công');
-      }catch(e){alert(e.message||String(e));}
+      }catch(e){UIToast.error(e.message||String(e));}
     };
     iPreview.onclick=async()=>{
       try{
-        if(!iFile.files[0]) return alert('Chọn file');
+        if(!iFile.files[0]) return UIToast.warn('Chọn file');
         const fd=new FormData(); fd.append('file',iFile.files[0]);
         const r=await fetch(API+'/import',{method:'POST',headers:{Authorization:h(false).Authorization||''},body:fd});
         const j=await r.json(); if(!r.ok) throw new Error(j.error||'Preview fail');
         previewId=j.previewId; iResult.textContent=JSON.stringify(j,null,2); iConfirm.disabled=false; addHist('Preview import thành công');
-      }catch(e){alert(e.message||String(e));}
+      }catch(e){UIToast.error(e.message||String(e));}
     };
     iConfirm.onclick=async()=>{
       try{
@@ -79,7 +80,7 @@
         const r=await fetch(API+'/import/confirm',{method:'POST',headers:h(true),body:JSON.stringify({previewId})});
         const j=await r.json(); if(!r.ok) throw new Error(j.error||'Import fail');
         addHist('Import thành công, inserted='+j.inserted); previewId=null; iConfirm.disabled=true;
-      }catch(e){alert(e.message||String(e));}
+      }catch(e){UIToast.error(e.message||String(e));}
     };
   })();
   </script>
